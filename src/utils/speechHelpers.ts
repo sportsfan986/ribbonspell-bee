@@ -120,10 +120,10 @@ function phoneticSkeleton(word: string): string {
     .replace(/(.)\1+/g, '$1');
 }
 
-// Fuzzy match whether a spoken transcript contains or matches the target word
-export function isFuzzyWordMatch(transcript: string, wordEntry: WordEntry): boolean {
-  const cleanedTranscript = normalizeBaseText(transcript).replace(/[.,!?]/g, '');
-  if (!cleanedTranscript) return false;
+// Check if a single token or short phrase is a close match for the target word
+export function isWordMatch(tokenOrPhrase: string, wordEntry: WordEntry): boolean {
+  const cleaned = normalizeBaseText(tokenOrPhrase).replace(/[.,!?]/g, '').trim();
+  if (!cleaned) return false;
 
   const targets = [
     normalizeBaseText(wordEntry.word),
@@ -131,37 +131,39 @@ export function isFuzzyWordMatch(transcript: string, wordEntry: WordEntry): bool
   ];
 
   for (const target of targets) {
-    if (cleanedTranscript === target || cleanedTranscript.includes(target)) {
+    if (cleaned === target) return true;
+
+    const compactTarget = target.replace(/[\s-]/g, '');
+    const compactCleaned = cleaned.replace(/[\s-]/g, '');
+    if (compactCleaned === compactTarget) return true;
+
+    // Word count sanity check: don't match a multi-word phrase against a 1-word target
+    const cleanedWords = cleaned.split(/\s+/).filter(Boolean);
+    const targetWords = target.split(/\s+/).filter(Boolean);
+    if (cleanedWords.length > targetWords.length) {
+      continue;
+    }
+
+    const dist = levenshteinDistance(compactCleaned, compactTarget);
+    const maxAllowed = compactTarget.length <= 4 ? 1 : compactTarget.length <= 7 ? 2 : 3;
+    if (dist <= maxAllowed && compactCleaned.length >= 2) {
       return true;
     }
 
-    // Check individual words or multi-word windows in the transcript
-    const words = cleanedTranscript.split(' ').filter(Boolean);
-    for (const spokenWord of words) {
-      if (spokenWord === target) return true;
-      const dist = levenshteinDistance(spokenWord, target);
-      const maxAllowed = target.length <= 4 ? 1 : target.length <= 7 ? 2 : 3;
-      if (dist <= maxAllowed && spokenWord.length >= 2) {
-        return true;
-      }
-      if (
-        phoneticSkeleton(spokenWord) === phoneticSkeleton(target) &&
-        phoneticSkeleton(target).length >= 2
-      ) {
-        return true;
-      }
-    }
-
-    // Also compare full cleaned transcript if target has spaces or hyphens
-    const compactTranscript = cleanedTranscript.replace(/[\s-]/g, '');
-    const compactTarget = target.replace(/[\s-]/g, '');
-    const fullDist = levenshteinDistance(compactTranscript, compactTarget);
-    if (fullDist <= (compactTarget.length <= 5 ? 1 : 2)) {
+    if (
+      phoneticSkeleton(compactCleaned) === phoneticSkeleton(compactTarget) &&
+      phoneticSkeleton(compactTarget).length >= 2
+    ) {
       return true;
     }
   }
 
   return false;
+}
+
+// Fuzzy match whether a spoken transcript contains or matches the target word
+export function isFuzzyWordMatch(transcript: string, wordEntry: WordEntry): boolean {
+  return isWordMatch(transcript, wordEntry);
 }
 
 // Detect voice prompts for repeat, sentence, definition, start over, or next word
@@ -436,6 +438,70 @@ export interface ParsedVerbalUtterance {
   saidStartWord: boolean;
   letters: string[];
   saidEndWord: boolean;
+}
+
+// Extract strictly spoken letters, single characters, or NATO/homophone tokens,
+// completely ignoring any spoken words (such as saying the target word or fillers).
+export function extractSpokenLettersOnly(
+  transcript: string,
+  wordEntry: WordEntry
+): string[] {
+  const normalized = transcript
+    .toLowerCase()
+    .replace(/double\s+u/g, 'doubleu')
+    .replace(/double\s+you/g, 'doubleu')
+    .replace(/x\s+ray/g, 'xray')
+    .replace(/n\s+tilde/g, 'ñ')
+    .replace(/e\s+acute/g, 'é')
+    .replace(/[.,!?]/g, ' ')
+    .trim();
+
+  if (!normalized) return [];
+
+  // Split tokens by spaces and hyphens if hyphenated like "b-o-a-t"
+  const rawTokens: string[] = [];
+  for (const part of normalized.split(/\s+/).filter(Boolean)) {
+    if (part.includes('-') && part.length > 2) {
+      rawTokens.push(...part.split('-').filter(Boolean));
+    } else {
+      rawTokens.push(part);
+    }
+  }
+
+  const extracted: string[] = [];
+  const targetLower = wordEntry.word.toLowerCase();
+  const altLowers = (wordEntry.altSpellings ?? []).map((s) => s.toLowerCase());
+
+  for (const tok of rawTokens) {
+    const cleanTok = tok.trim();
+    if (!cleanTok) continue;
+
+    // If the token matches the whole target word (e.g. saying "mute" at start or end),
+    // IGNORE it completely so it is never unpacked or counted as letters!
+    if (
+      cleanTok === targetLower ||
+      altLowers.includes(cleanTok) ||
+      isWordMatch(cleanTok, wordEntry)
+    ) {
+      continue;
+    }
+
+    // Check if token is in SPOKEN_LETTER_MAP
+    if (SPOKEN_LETTER_MAP[cleanTok]) {
+      extracted.push(SPOKEN_LETTER_MAP[cleanTok]);
+      continue;
+    }
+
+    // Direct single letter character (a-z, ñ, é, -)
+    if (/^[a-zñé-]$/.test(cleanTok)) {
+      extracted.push(cleanTok);
+      continue;
+    }
+
+    // Common two-letter contractions/fillers are ignored
+  }
+
+  return extracted;
 }
 
 // Parse a spoken utterance for letters and start/end word confirmations

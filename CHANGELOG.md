@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.11] — 2026-10-30
+
+### Added
+- **Letter-Only Verbal Mode Engine**: The voice pipeline now listens exclusively for spelled letters (`extractSpokenLettersOnly`) and valid commands, completely eliminating whole-word leaks or duplicate word token dumping.
+- **Auto-Stop 1 Second After Last Letter**: As soon as the student speaks the final expected letter of the word (`userLetters.length >= targetLetterCount`), the app waits 1 second, automatically stops the microphone, and submits the spelling for instant evaluation.
+- **10-Second Pause Auto-Submit**: If a student pauses for more than 10 seconds while spelling, the app automatically concludes the word and evaluates the attempt.
+- **Zero Raw Transcript Displays**: Removed the `Heard: “...”` badge that inadvertently printed recognized speech (e.g. *"mute m u t e mute"*) on screen. The badge now strictly displays clean command labels (such as `Repeat`, `Sentence`, `Definition`) and real-time timing indicators (`Submitting in 1s...`).
+- **Streamlined Verbal Mode Action Strip**: Replaced redundant Step 1 confirmation buttons with direct controls: `↺ Start Over`, `⌫ Undo Letter`, `Submit Spelling Now`, and `Next Word ➔`.
+
 ## [v1.01] — 2026-10-30
 
 ### Added
