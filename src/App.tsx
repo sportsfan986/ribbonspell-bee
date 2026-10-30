@@ -149,6 +149,31 @@ export default function App() {
     setAutoAdvanceSeconds(null);
   }, []);
 
+  // Setup / Teardown Web Speech API or Native Android SpeechBridge Recognition
+  const stopListening = useCallback(() => {
+    shouldKeepListeningRef.current = false;
+    setIsMicListening(false);
+    const androidBridge = (
+      window as unknown as {
+        AndroidSpeechBridge?: { stopListening?: () => void };
+      }
+    ).AndroidSpeechBridge;
+    if (androidBridge?.stopListening) {
+      try {
+        androidBridge.stopListening();
+      } catch {
+        // Ignore
+      }
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // Ignore stop errors
+      }
+    }
+  }, []);
+
   // Sync masteryMap to localStorage
   useEffect(() => {
     try {
@@ -422,31 +447,6 @@ export default function App() {
     },
     [currentWord]
   );
-
-  // Setup / Teardown Web Speech API or Native Android SpeechBridge Recognition
-  const stopListening = useCallback(() => {
-    shouldKeepListeningRef.current = false;
-    setIsMicListening(false);
-    const androidBridge = (
-      window as unknown as {
-        AndroidSpeechBridge?: { stopListening?: () => void };
-      }
-    ).AndroidSpeechBridge;
-    if (androidBridge?.stopListening) {
-      try {
-        androidBridge.stopListening();
-      } catch {
-        // Ignore
-      }
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {
-        // Ignore stop errors
-      }
-    }
-  }, []);
 
   // Start Over on Current Word
   const handleStartOverWord = useCallback(() => {
