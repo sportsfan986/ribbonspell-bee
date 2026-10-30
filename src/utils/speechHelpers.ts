@@ -25,7 +25,11 @@ export function speakText(
     try {
       androidBridge.speak(text);
       if (options?.onEnd) {
-        setTimeout(() => options.onEnd?.(), 1200);
+        const estimatedMs = Math.max(
+          1400,
+          Math.round((text.trim().split(/\s+/).length / 2.3) * 1000)
+        );
+        setTimeout(() => options.onEnd?.(), estimatedMs);
       }
       return;
     } catch {
@@ -182,23 +186,31 @@ export function detectVoicePromptIntent(transcript: string): VoicePromptIntent {
   const lower = transcript.toLowerCase().trim();
   if (!lower) return null;
 
-  // Start Over / Restart Word
+  // Start Over / Restart Word / Try Again
   if (
     lower.includes('start over') ||
     lower.includes('start again') ||
     lower.includes('try again') ||
+    lower.includes('try it again') ||
+    lower.includes('practice again') ||
+    lower.includes('practice word again') ||
+    lower.includes('retry') ||
     lower.includes('restart word') ||
     lower.includes('restart') ||
     lower.includes('reset word') ||
-    lower.includes('begin again')
+    lower.includes('begin again') ||
+    lower === 'again'
   ) {
     return 'start_over';
   }
 
-  // Next Word / Skip Word
+  // Next Word / Skip Word / Continue
   if (
     lower.includes('next word') ||
     lower === 'next' ||
+    lower === 'continue' ||
+    lower.includes('move on') ||
+    lower.includes('advance') ||
     lower.includes('skip word') ||
     lower === 'skip' ||
     lower === 'pass' ||

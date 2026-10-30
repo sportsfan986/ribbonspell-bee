@@ -134,6 +134,21 @@ export default function App() {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const shouldKeepListeningRef = useRef(false);
 
+  // Auto-advance countdown and callback refs for hands-free speech flow
+  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState<number | null>(null);
+  const autoAdvanceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startListeningRef = useRef<() => void>(() => {});
+  const handleNextWordRef = useRef<() => void>(() => {});
+  const handleStartOverWordRef = useRef<() => void>(() => {});
+
+  const clearAutoAdvance = useCallback(() => {
+    if (autoAdvanceIntervalRef.current) {
+      clearInterval(autoAdvanceIntervalRef.current);
+      autoAdvanceIntervalRef.current = null;
+    }
+    setAutoAdvanceSeconds(null);
+  }, []);
+
   // Sync masteryMap to localStorage
   useEffect(() => {
     try {
@@ -183,6 +198,7 @@ export default function App() {
         setShortTermRetryQueue(nextQueue);
       }
 
+      clearAutoAdvance();
       if (finishTimerRef.current) {
         clearTimeout(finishTimerRef.current);
         finishTimerRef.current = null;
@@ -207,14 +223,22 @@ export default function App() {
       setLiveTranscript('');
       setActiveCommandBadge('');
       setVerbalCoachBanner(
-        'Speak each letter aloud (e.g. "M - U - T - E"). Asking "Repeat", "Sentence", or "Definition" is supported anytime.'
+        'Speak each letter aloud (e.g. "M - U - T - E"). Saying "Again", "Next Word", "Repeat", or "Sentence" is supported anytime.'
       );
 
       if (announceAloud && !soundEngine.muted) {
-        speakText(`Your word is ${chosenWord.word}.`);
+        speakText(`Your word is ${chosenWord.word}.`, {
+          onEnd: () => {
+            if (practiceMode === 'verbal') {
+              startListeningRef.current();
+            }
+          },
+        });
+      } else if (practiceMode === 'verbal') {
+        startListeningRef.current();
       }
     },
-    [activePool, currentWord?.id, masteryMap, shortTermRetryQueue]
+    [activePool, clearAutoAdvance, currentWord?.id, masteryMap, practiceMode, shortTermRetryQueue]
   );
 
   // Trigger initial pronunciation when switching to Practice Stage
@@ -231,6 +255,7 @@ export default function App() {
   // Finalize and grade the student's spelling
   const evaluateCurrentSpelling = useCallback(
     (lettersToGrade?: string[]) => {
+      clearAutoAdvance();
       if (finishTimerRef.current) {
         clearTimeout(finishTimerRef.current);
         finishTimerRef.current = null;
@@ -249,20 +274,66 @@ export default function App() {
       setValidationResult(result);
       setVerbalPhase('feedback');
 
-      // Play positive or constructive Web Audio tone
+      const spellAloud = currentWord.word.split('').join(' ');
+
+      // Temporarily stop listening while TTS is reading feedback to prevent audio echo
+      stopListening();
+
+      // Play positive or constructive Web Audio tone & voice synthesis
       if (result.isCorrect) {
         soundEngine.playCorrectChime();
+        setVerbalCoachBanner(`✓ Correct! Auto-advancing in 5s... (Say "Next Word" to skip)`);
+
+        const handleCorrectSpeakingDone = () => {
+          // Keep microphone active and listening for "next word" or commands
+          if (practiceMode === 'verbal') {
+            startListeningRef.current();
+          }
+
+          // Start 5s countdown timer
+          clearAutoAdvance();
+          let count = 5;
+          setAutoAdvanceSeconds(count);
+          autoAdvanceIntervalRef.current = setInterval(() => {
+            count -= 1;
+            if (count <= 0) {
+              clearAutoAdvance();
+              handleNextWordRef.current();
+            } else {
+              setAutoAdvanceSeconds(count);
+            }
+          }, 1000);
+        };
+
         if (!soundEngine.muted) {
-          speakText(`Correct! ${currentWord.word} is spelled ${currentWord.word.split('').join(' ')}.`);
+          speakText(`Correct! ${currentWord.word} is spelled ${spellAloud}.`, {
+            onEnd: handleCorrectSpeakingDone,
+          });
+        } else {
+          handleCorrectSpeakingDone();
         }
       } else {
         soundEngine.playConstructiveReviewTone();
+        setVerbalCoachBanner(
+          `Say "Try Again" to practice this word, or say "Next Word" to continue.`
+        );
+
+        const handleMissedSpeakingDone = () => {
+          // Keep microphone active and listening for "try again" / "next word"
+          if (practiceMode === 'verbal') {
+            startListeningRef.current();
+          }
+        };
+
         if (!soundEngine.muted) {
           speakText(
-            `Nice try! Let's check the pattern for ${currentWord.word}: ${currentWord.word
-              .split('')
-              .join(' ')}.`
+            `Nice try! Let's check the pattern for ${currentWord.word}: ${spellAloud}. Say "try again" to practice this word, or say "next word" to continue.`,
+            {
+              onEnd: handleMissedSpeakingDone,
+            }
           );
+        } else {
+          handleMissedSpeakingDone();
         }
       }
 
@@ -326,7 +397,7 @@ export default function App() {
         ...prev,
       ]);
     },
-    [currentWord, practiceMode, userLetters]
+    [clearAutoAdvance, currentWord, practiceMode, stopListening, userLetters]
   );
 
   // Handle clue triggers (both button clicks and voice prompts)
@@ -379,6 +450,7 @@ export default function App() {
 
   // Start Over on Current Word
   const handleStartOverWord = useCallback(() => {
+    clearAutoAdvance();
     if (finishTimerRef.current) {
       clearTimeout(finishTimerRef.current);
       finishTimerRef.current = null;
@@ -395,15 +467,29 @@ export default function App() {
     setVerbalPhase('spelling_letters');
     setLiveTranscript('');
     setActiveCommandBadge('Start Over');
-    setVerbalCoachBanner('Starting over on this word. Speak each letter aloud to spell.');
+    setVerbalCoachBanner('Starting over on this word. Speak each letter clearly to spell.');
     soundEngine.playStepAdvance();
+
+    // Pause mic while TTS announces restart, then resume listening
+    stopListening();
+    const resumeListeningAfterPrompt = () => {
+      if (practiceMode === 'verbal') {
+        startListeningRef.current();
+      }
+    };
+
     if (!soundEngine.muted) {
-      speakText(`Starting over. Your word is ${currentWord.word}.`);
+      speakText(`Starting over. Your word is ${currentWord.word}.`, {
+        onEnd: resumeListeningAfterPrompt,
+      });
+    } else {
+      resumeListeningAfterPrompt();
     }
-  }, [currentWord]);
+  }, [clearAutoAdvance, currentWord, practiceMode, stopListening]);
 
   // Advance to Next Word
   const handleNextWord = useCallback(() => {
+    clearAutoAdvance();
     if (finishTimerRef.current) {
       clearTimeout(finishTimerRef.current);
       finishTimerRef.current = null;
@@ -413,26 +499,57 @@ export default function App() {
       inactivityTimerRef.current = null;
     }
     loadWordOnStage(undefined, true);
-  }, [loadWordOnStage]);
+  }, [clearAutoAdvance, loadWordOnStage]);
 
-  // Process a finalized spoken utterance in Verbal Mode: Only listen for letters,
-  // auto-stop 1s after the last letter, or auto-submit after a 10s pause.
+  // Process a spoken utterance in Hybrid Mode:
+  // - Voice commands ("again" / "try again", "next word", "repeat", "sentence", "definition") are always heard!
+  // - Whole word pronunciation is recognized as framing and NOT converted into letter tiles
+  // - Only recognized letter sounds go into the spelling tiles
   const handleVerbalUtterance = useCallback(
     (transcript: string) => {
       const clean = transcript.trim();
-      if (!clean || validationResult) return;
+      if (!clean) return;
 
       // 1. Check for utility voice commands first
       const intent = detectVoicePromptIntent(clean);
+
+      // If viewing validation feedback after a word:
+      if (validationResult) {
+        if (intent === 'start_over') {
+          clearAutoAdvance();
+          handleStartOverWord();
+          return;
+        }
+        if (intent === 'next_word') {
+          clearAutoAdvance();
+          handleNextWord();
+          return;
+        }
+        if (intent === 'repeat') {
+          triggerClue('repeat');
+          return;
+        }
+        // Do not process letter tokens into a finished word
+        return;
+      }
+
+      // If currently spelling:
       if (intent === 'start_over') {
+        clearAutoAdvance();
         handleStartOverWord();
         return;
       }
       if (intent === 'next_word') {
+        clearAutoAdvance();
         handleNextWord();
         return;
       }
-      if (intent === 'repeat' || intent === 'sentence' || intent === 'definition' || intent === 'phonetic') {
+      if (
+        intent === 'repeat' ||
+        intent === 'sentence' ||
+        intent === 'definition' ||
+        intent === 'phonetic'
+      ) {
         if (finishTimerRef.current) {
           clearTimeout(finishTimerRef.current);
           finishTimerRef.current = null;
@@ -472,26 +589,37 @@ export default function App() {
         if (userLettersRef.current.length > 0) {
           if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
           if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-          stopListening();
           evaluateCurrentSpelling(userLettersRef.current);
         }
         return;
       }
 
-      // 2. Only listen for letters!
+      // 2. Hybrid Word Pronunciation Handling:
+      // If student pronounces the word at start (e.g. "Boat ... B-O-A-T"), do NOT put "boat" into letter tiles!
+      if (userLettersRef.current.length === 0 && isWordMatch(clean, currentWord)) {
+        setSaidStartWord(true);
+        setActiveCommandBadge('Word Stated');
+        setVerbalCoachBanner(`Heard "${currentWord.word}". Now spell letter by letter!`);
+        return;
+      }
+
+      // If student repeats the word after finishing letters (e.g. "B-O-A-T ... Boat"), submit immediately!
+      if (userLettersRef.current.length > 0 && isWordMatch(clean, currentWord)) {
+        setSaidEndWord(true);
+        setActiveCommandBadge('Finished');
+        if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+        evaluateCurrentSpelling(userLettersRef.current);
+        return;
+      }
+
+      // 3. Spoken Letters Extraction: Only actual letter sounds enter spelling tiles
       const newLetters = extractSpokenLettersOnly(clean, currentWord);
       if (newLetters.length === 0) {
-        // If the student pronounced the target word after already spelling letters, submit immediately
-        if (userLettersRef.current.length > 0 && isWordMatch(clean, currentWord)) {
-          if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
-          if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-          stopListening();
-          evaluateCurrentSpelling(userLettersRef.current);
-        }
         return;
       }
 
-      // 3. Append recognized letters to active buffer
+      // 4. Append recognized letters to active buffer
       const updated = [...userLettersRef.current, ...newLetters];
       userLettersRef.current = updated;
       setUserLetters(updated);
@@ -509,25 +637,23 @@ export default function App() {
         inactivityTimerRef.current = null;
       }
 
-      // Condition: Wait until last letter of word is said and wait 1 second then stop
+      // Auto-submit 1s after last letter of word is said
       if (updated.length >= targetCount) {
         setVerbalCoachBanner(
           `✓ Spelled all ${targetCount} letters! Auto-submitting in 1 second...`
         );
         setActiveCommandBadge('Submitting in 1s...');
         finishTimerRef.current = setTimeout(() => {
-          stopListening();
           setActiveCommandBadge('');
           evaluateCurrentSpelling(userLettersRef.current);
         }, 1000);
       } else {
-        // Condition: If user pauses for more than 10 seconds, call that the end of the word
+        // Auto-submit if user pauses for more than 10 seconds
         setVerbalCoachBanner(
           `Spelled ${updated.length} of ${targetCount} letters. Speak next letter (10s pause will auto-submit)...`
         );
         setActiveCommandBadge(`${updated.length}/${targetCount} Letters`);
         inactivityTimerRef.current = setTimeout(() => {
-          stopListening();
           setVerbalCoachBanner('10-second pause reached. Auto-submitting word now...');
           setActiveCommandBadge('10s Pause Auto-Submit');
           evaluateCurrentSpelling(userLettersRef.current);
@@ -535,11 +661,11 @@ export default function App() {
       }
     },
     [
+      clearAutoAdvance,
       currentWord,
       evaluateCurrentSpelling,
       handleNextWord,
       handleStartOverWord,
-      stopListening,
       triggerClue,
       validationResult,
     ]
@@ -651,12 +777,27 @@ export default function App() {
     }
   }, []);
 
-  // Automatically stop mic if leaving Verbal mode or Practice tab
+  // Sync latest callback references for timers and async callbacks
+  useEffect(() => {
+    startListeningRef.current = startListening;
+    handleNextWordRef.current = handleNextWord;
+    handleStartOverWordRef.current = handleStartOverWord;
+  });
+
+  // Cleanup autoAdvance countdown on component unmount
+  useEffect(() => {
+    return () => {
+      clearAutoAdvance();
+    };
+  }, [clearAutoAdvance]);
+
+  // Automatically stop mic and clear auto-advance if leaving Verbal mode or Practice tab
   useEffect(() => {
     if (practiceMode !== 'verbal' || activeTab !== 'practice') {
       stopListening();
+      clearAutoAdvance();
     }
-  }, [practiceMode, activeTab, stopListening]);
+  }, [practiceMode, activeTab, stopListening, clearAutoAdvance]);
 
   // Toggle sound mute
   const handleToggleMute = () => {
@@ -673,6 +814,7 @@ export default function App() {
     newLevel: LevelFilterOption,
     newSource: SourceFilterOption
   ) => {
+    clearAutoAdvance();
     setLevelFilter(newLevel);
     setSourceFilter(newSource);
     const nextPool = filterWordPool(newLevel, newSource, masteryMap);
@@ -1113,18 +1255,24 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {validationResult.isCorrect && autoAdvanceSeconds !== null && (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-950 text-xs font-semibold animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+                              <span>Auto-advancing in {autoAdvanceSeconds}s...</span>
+                            </div>
+                          )}
+
+                          {!validationResult.isCorrect && (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-100 border border-rose-300 text-rose-950 text-xs font-semibold">
+                              <span>Say &ldquo;Try Again&rdquo; or tap below</span>
+                            </div>
+                          )}
+
                           {!validationResult.isCorrect && (
                             <button
                               type="button"
-                              onClick={() => {
-                                setValidationResult(null);
-                                setUserLetters([]);
-                                setVerbalPhase('awaiting_start_word');
-                                setSaidStartWord(false);
-                                setSaidEndWord(false);
-                                speakText(currentWord.word);
-                              }}
+                              onClick={handleStartOverWord}
                               className="min-h-[40px] px-3.5 py-2 rounded-xl bg-white hover:bg-rose-100 border border-rose-300 text-rose-900 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
@@ -1134,7 +1282,7 @@ export default function App() {
 
                           <button
                             type="button"
-                            onClick={() => loadWordOnStage(undefined, true)}
+                            onClick={handleNextWord}
                             className="min-h-[40px] px-4 py-2 rounded-xl bg-[#1E1B4B] hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
                           >
                             <span>Next Word</span>
@@ -1212,24 +1360,29 @@ export default function App() {
                         onClick={() =>
                           isMicListening ? stopListening() : startListening()
                         }
-                        disabled={Boolean(validationResult)}
                         className={`flex-1 min-h-[52px] px-5 py-3 rounded-2xl font-display font-semibold text-sm transition-all cursor-pointer flex items-center justify-center gap-2.5 shadow-xs whitespace-nowrap ${
                           isMicListening
-                            ? 'bg-sky-600 hover:bg-sky-700 text-white'
+                            ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-200'
                             : 'bg-pink-600 hover:bg-pink-700 text-white'
-                        } disabled:opacity-40`}
+                        }`}
                       >
                         {isMicListening ? (
                           <>
-                            <Mic className="w-5 h-5" />
+                            <Mic className="w-5 h-5 animate-pulse text-sky-200" />
                             <span>
-                              Microphone Listening... (Click to Pause)
+                              {validationResult
+                                ? 'Microphone Active — Listening for "Next Word" / "Try Again"...'
+                                : 'Microphone Listening... (Click to Pause)'}
                             </span>
                           </>
                         ) : (
                           <>
                             <MicOff className="w-5 h-5" />
-                            <span>Start Stage Microphone (Hands-Free)</span>
+                            <span>
+                              {validationResult
+                                ? 'Resume Microphone (Voice Commands)'
+                                : 'Start Stage Microphone (Hands-Free)'}
+                            </span>
                           </>
                         )}
                       </button>

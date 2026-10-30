@@ -1,6 +1,16 @@
 # Changelog
 
-## [v1.11] — 2026-10-30
+## [v1.12] — 2026-10-30
+
+### Added
+- **Expanded Scripps Vocabulary (700+ Words)**: Added over 135 additional official Scripps National Spelling Bee competition words across One Bee, Two Bee, and Three Bee difficulty levels with complete phonetic respellings, parts of speech, definitions, and kid-friendly competition sentences.
+- **Hybrid Voice Engine with Unblocked Command Listening**: The verbal mode engine now runs in seamless hybrid mode:
+  - Spoken commands (*"again"*, *"try again"*, *"next word"*, *"next"*, *"start over"*, *"repeat"*, *"sentence"*, *"definition"*, *"clear"*) are always heard and executed immediately, whether actively spelling or viewing word results.
+  - Spoken words at the start or end are recognized as framing pronunciations without leaking into the spelling.
+  - Only spoken letters (and NATO phonetics/homophones) enter the active letter tiles.
+- **Continuous Microphone Active During Feedback**: The microphone is never disabled after a word is evaluated. The student can navigate 100% hands-free by speaking *"Next Word"* or *"Try Again"*.
+- **5-Second Auto-Advance Countdown**: Upon spelling a word correctly, the app reads the congratulations and spelling aloud, keeps the microphone active, and displays an animated 5-second auto-advance countdown. Saying *"Next Word"* or tapping the button advances immediately without waiting.
+- **Automatic Verbal Prompt for "Try Again"**: If a student misses a word, the pronouncer constructively reviews the spelling and verbally prompts aloud: *"Say 'try again' to practice this word, or say 'next word' to continue"*. Saying *"try again"* or *"again"* immediately restarts practice on that word.
 
 ### Added
 - **Letter-Only Verbal Mode Engine**: The voice pipeline now listens exclusively for spelled letters (`extractSpokenLettersOnly`) and valid commands, completely eliminating whole-word leaks or duplicate word token dumping.
