@@ -164,12 +164,14 @@ export function isFuzzyWordMatch(transcript: string, wordEntry: WordEntry): bool
   return false;
 }
 
-// Detect voice prompts for repeat, sentence, or definition
+// Detect voice prompts for repeat, sentence, definition, start over, or next word
 export type VoicePromptIntent =
   | 'repeat'
   | 'sentence'
   | 'definition'
   | 'phonetic'
+  | 'start_over'
+  | 'next_word'
   | 'clear'
   | 'done'
   | null;
@@ -178,130 +180,252 @@ export function detectVoicePromptIntent(transcript: string): VoicePromptIntent {
   const lower = transcript.toLowerCase().trim();
   if (!lower) return null;
 
+  // Start Over / Restart Word
+  if (
+    lower.includes('start over') ||
+    lower.includes('start again') ||
+    lower.includes('try again') ||
+    lower.includes('restart word') ||
+    lower.includes('restart') ||
+    lower.includes('reset word') ||
+    lower.includes('begin again')
+  ) {
+    return 'start_over';
+  }
+
+  // Next Word / Skip Word
+  if (
+    lower.includes('next word') ||
+    lower === 'next' ||
+    lower.includes('skip word') ||
+    lower === 'skip' ||
+    lower === 'pass' ||
+    lower.includes('pass word')
+  ) {
+    return 'next_word';
+  }
+
+  // Repeat Word
   if (
     lower.includes('repeat') ||
     lower.includes('say it again') ||
     lower.includes('say that again') ||
     lower.includes('hear the word') ||
-    lower.includes('what was the word')
+    lower.includes('what was the word') ||
+    lower.includes('what is the word')
   ) {
     return 'repeat';
   }
 
+  // Sentence
   if (
     lower.includes('sentence') ||
     lower.includes('use it in a') ||
-    lower.includes('example')
+    lower.includes('example') ||
+    lower.includes('give me a sentence')
   ) {
     return 'sentence';
   }
 
+  // Definition
   if (
     lower.includes('definition') ||
     lower.includes('what does it mean') ||
     lower.includes('meaning') ||
-    lower.includes('define')
+    lower.includes('define') ||
+    lower.includes('give me the definition')
   ) {
     return 'definition';
   }
 
-  if (lower.includes('phonetic') || lower.includes('pronunciation')) {
+  // Phonetic Guide
+  if (
+    lower.includes('phonetic') ||
+    lower.includes('pronunciation') ||
+    lower.includes('how do you pronounce')
+  ) {
     return 'phonetic';
   }
 
-  if (lower === 'clear' || lower === 'start over' || lower === 'reset') {
+  // Clear typed letters
+  if (
+    lower === 'clear' ||
+    lower === 'clear letters' ||
+    lower === 'erase' ||
+    lower === 'backspace all'
+  ) {
     return 'clear';
   }
 
-  if (lower === 'done' || lower === 'submit' || lower === 'finished') {
+  // Finish spelling
+  if (
+    lower === 'done' ||
+    lower === 'submit' ||
+    lower === 'finished' ||
+    lower === 'check spelling' ||
+    lower === 'check my spelling'
+  ) {
     return 'done';
   }
 
   return null;
 }
 
-// Map spoken letter homophones to single characters
+// Map spoken letter homophones and NATO alphabet to single characters
 const SPOKEN_LETTER_MAP: Record<string, string> = {
+  // A
   a: 'a',
   ay: 'a',
   hey: 'a',
+  ai: 'a',
+  alpha: 'a',
+  // B
   b: 'b',
   bee: 'b',
   be: 'b',
+  bea: 'b',
+  bravo: 'b',
+  // C
   c: 'c',
   see: 'c',
   sea: 'c',
   si: 'c',
+  charlie: 'c',
+  // D
   d: 'd',
   dee: 'd',
   de: 'd',
+  delta: 'd',
+  // E
   e: 'e',
   ee: 'e',
+  ea: 'e',
+  echo: 'e',
+  // F
   f: 'f',
   ef: 'f',
   eff: 'f',
+  foxtrot: 'f',
+  // G
   g: 'g',
   gee: 'g',
+  ge: 'g',
   ji: 'g',
+  golf: 'g',
+  // H
   h: 'h',
   aitch: 'h',
   ach: 'h',
   each: 'h',
+  ha: 'h',
+  heche: 'h',
+  hotel: 'h',
+  // I
   i: 'i',
   eye: 'i',
   aye: 'i',
+  india: 'i',
+  // J
   j: 'j',
   jay: 'j',
+  je: 'j',
+  juliet: 'j',
+  // K
   k: 'k',
   kay: 'k',
+  ka: 'k',
   okay: 'k',
+  kilo: 'k',
+  // L
   l: 'l',
   el: 'l',
   ell: 'l',
+  lima: 'l',
+  // M
   m: 'm',
   em: 'm',
+  emm: 'm',
   am: 'm',
+  mike: 'm',
+  // N
   n: 'n',
   en: 'n',
+  enn: 'n',
   and: 'n',
   in: 'n',
+  november: 'n',
+  // O
   o: 'o',
   oh: 'o',
   owe: 'o',
+  eau: 'o',
+  oscar: 'o',
+  // P
   p: 'p',
   pee: 'p',
   pea: 'p',
+  pe: 'p',
+  papa: 'p',
+  // Q
   q: 'q',
   cue: 'q',
   queue: 'q',
   kyu: 'q',
+  quebec: 'q',
+  // R
   r: 'r',
   ar: 'r',
   are: 'r',
+  arr: 'r',
   our: 'r',
+  romeo: 'r',
+  // S
   s: 's',
   es: 's',
   ess: 's',
   as: 's',
+  sierra: 's',
+  // T
   t: 't',
   tee: 't',
   tea: 't',
+  te: 't',
   ti: 't',
+  tango: 't',
+  // U
   u: 'u',
   you: 'u',
   yew: 'u',
+  yu: 'u',
+  uniform: 'u',
+  // V
   v: 'v',
   vee: 'v',
+  ve: 'v',
+  victor: 'v',
+  // W
   w: 'w',
   doubleu: 'w',
+  'double-u': 'w',
+  'double u': 'w',
+  whiskey: 'w',
+  // X
   x: 'x',
   ex: 'x',
+  ecks: 'x',
+  xray: 'x',
+  'x-ray': 'x',
+  // Y
   y: 'y',
   why: 'y',
   wye: 'y',
+  yankee: 'y',
+  // Z
   z: 'z',
   zee: 'z',
   zed: 'z',
+  zulu: 'z',
+  // Punctuation & Diacritics
   hyphen: '-',
   dash: '-',
   minus: '-',
@@ -315,6 +439,8 @@ export interface ParsedVerbalUtterance {
 }
 
 // Parse a spoken utterance for letters and start/end word confirmations
+// Treating spoken words and spoken letters independently so saying "Boat B-O-A-T Boat"
+// cleanly recognizes: Start Word ("Boat"), Letters (['b', 'o', 'a', 't']), End Word ("Boat")
 export function parseSpokenSpelling(
   transcript: string,
   wordEntry: WordEntry,
@@ -325,6 +451,7 @@ export function parseSpokenSpelling(
     .toLowerCase()
     .replace(/double\s+u/g, 'doubleu')
     .replace(/double\s+you/g, 'doubleu')
+    .replace(/x\s+ray/g, 'xray')
     .replace(/n\s+tilde/g, 'ñ')
     .replace(/e\s+acute/g, 'é')
     .replace(/[.,!?]/g, ' ')
@@ -334,77 +461,83 @@ export function parseSpokenSpelling(
     return { saidStartWord: false, letters: [], saidEndWord: false };
   }
 
-  const rawTokens = normalized.split(/\s+/).filter(Boolean);
-  const targetBase = normalizeBaseText(wordEntry.word).replace(/[\s-]/g, '');
+  // Pre-split tokens, handling hyphenated letter sequences like "b-o-a-t"
+  const rawTokens: string[] = [];
+  for (const part of normalized.split(/\s+/).filter(Boolean)) {
+    if (part.includes('-') && part.length > 2 && !isFuzzyWordMatch(part, wordEntry)) {
+      rawTokens.push(...part.split('-').filter(Boolean));
+    } else {
+      rawTokens.push(part);
+    }
+  }
 
   let saidStartWord = false;
   let saidEndWord = false;
-  const extractedLetters: string[] = [];
+  let tokens = [...rawTokens];
 
-  let startIndex = 0;
-  let endIndex = rawTokens.length;
-
-  // Check if first token(s) match the full target word
-  if (!alreadySaidStartWord && rawTokens.length >= 1) {
-    const firstToken = rawTokens[0];
-    if (isFuzzyWordMatch(firstToken, wordEntry) && firstToken.length > 1) {
-      saidStartWord = true;
-      startIndex = 1;
-    } else if (
-      rawTokens.length >= 2 &&
-      isFuzzyWordMatch(`${rawTokens[0]} ${rawTokens[1]}`, wordEntry)
-    ) {
-      saidStartWord = true;
-      startIndex = 2;
+  // Case 1: Entire utterance is purely the target word
+  if (tokens.length >= 1 && isFuzzyWordMatch(normalized, wordEntry)) {
+    if (!alreadySaidStartWord || currentSpelledCount === 0) {
+      return { saidStartWord: true, letters: [], saidEndWord: false };
+    } else {
+      return { saidStartWord: true, letters: [], saidEndWord: true };
     }
   }
 
-  // Check if the final token matches the target word after letters have been spoken
-  if (rawTokens.length > startIndex) {
-    const lastToken = rawTokens[rawTokens.length - 1];
-    const hasEnoughLetters =
-      currentSpelledCount + (rawTokens.length - startIndex - 1) >=
-      Math.max(2, targetBase.length - 1);
+  // Case 2: Multi-token utterance (e.g. "Boat B O A T Boat" or "Boat B O A T")
+  // Check leading token(s) for start word
+  if (tokens.length >= 1) {
+    if (isFuzzyWordMatch(tokens[0], wordEntry) && tokens[0].length > 1) {
+      saidStartWord = true;
+      tokens = tokens.slice(1);
+    } else if (
+      tokens.length >= 2 &&
+      isFuzzyWordMatch(`${tokens[0]} ${tokens[1]}`, wordEntry)
+    ) {
+      saidStartWord = true;
+      tokens = tokens.slice(2);
+    }
+  }
 
+  // Check trailing token(s) for end word after letters
+  if (tokens.length >= 1) {
+    const lastTok = tokens[tokens.length - 1];
     if (
-      lastToken.length >= 2 &&
-      !SPOKEN_LETTER_MAP[lastToken] &&
-      isFuzzyWordMatch(lastToken, wordEntry) &&
-      (alreadySaidStartWord || saidStartWord) &&
-      (hasEnoughLetters || currentSpelledCount >= Math.max(2, targetBase.length - 1))
+      lastTok.length > 1 &&
+      !SPOKEN_LETTER_MAP[lastTok] &&
+      isFuzzyWordMatch(lastTok, wordEntry)
     ) {
       saidEndWord = true;
-      endIndex = rawTokens.length - 1;
+      tokens = tokens.slice(0, -1);
+    } else if (tokens.length >= 2) {
+      const lastTwo = `${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
+      if (isFuzzyWordMatch(lastTwo, wordEntry)) {
+        saidEndWord = true;
+        tokens = tokens.slice(0, -2);
+      }
     }
   }
 
-  // Extract letters from the remaining middle tokens
-  for (let i = startIndex; i < endIndex; i++) {
-    const tok = rawTokens[i];
+  // Case 3: Parse remaining middle tokens strictly as letters
+  // Spoken words are never dumped as letters!
+  const extractedLetters: string[] = [];
+
+  for (const tok of tokens) {
     if (SPOKEN_LETTER_MAP[tok]) {
       extractedLetters.push(SPOKEN_LETTER_MAP[tok]);
     } else if (tok === 'ñ' || tok === 'é') {
       extractedLetters.push(tok);
     } else if (/^[a-z-]$/.test(tok)) {
       extractedLetters.push(tok);
-    } else if (/^[a-z]{2,8}$/.test(tok)) {
-      // Sometimes browser ASR groups rapid letters like "r a n" or "c a t" into "ran" or "cat"
-      // If we are already in the spelling letters phase, split into letters unless it is the closing word
-      const isTargetMatch = isFuzzyWordMatch(tok, wordEntry);
-      if (isTargetMatch && !alreadySaidStartWord && !saidStartWord && i === 0) {
+    } else if (isFuzzyWordMatch(tok, wordEntry)) {
+      // It's the target word repeated in speech - consume as word, not letters!
+      if (!alreadySaidStartWord && !saidStartWord && extractedLetters.length === 0) {
         saidStartWord = true;
-      } else if (
-        isTargetMatch &&
-        (alreadySaidStartWord || saidStartWord) &&
-        currentSpelledCount + extractedLetters.length >= Math.max(2, targetBase.length - 1)
-      ) {
-        saidEndWord = true;
       } else {
-        for (const ch of tok) {
-          extractedLetters.push(ch);
-        }
+        saidEndWord = true;
       }
     }
+    // Any other arbitrary non-letter words (e.g. "uh", "the", "um") are deliberately ignored!
   }
 
   return {

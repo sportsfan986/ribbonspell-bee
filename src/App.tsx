@@ -93,8 +93,11 @@ export default function App() {
     { wordId: string; dueInCount: number }[]
   >([]);
 
-  // Current Active Word & Stage State
-  const [currentWord, setCurrentWord] = useState<WordEntry>(() => ALL_WORDS[0]);
+  // Current Active Word & Stage State (Randomized on launch)
+  const [currentWord, setCurrentWord] = useState<WordEntry>(() => {
+    const randomIndex = Math.floor(Math.random() * ALL_WORDS.length);
+    return ALL_WORDS[randomIndex];
+  });
   const [userLetters, setUserLetters] = useState<string[]>([]);
   const [validationResult, setValidationResult] =
     useState<SpellingValidationResult | null>(null);
@@ -303,7 +306,7 @@ export default function App() {
     (type: 'repeat' | 'sentence' | 'definition' | 'phonetic') => {
       if (type === 'repeat') {
         speakText(`${currentWord.word}.`);
-        setVerbalCoachBanner(`Pronouncer repeated: "${currentWord.word}"`);
+        setVerbalCoachBanner('Pronouncer repeated the word.');
       } else if (type === 'sentence') {
         setRevealedClues((prev) => ({ ...prev, sentence: true }));
         speakText(currentWord.sentence);
@@ -321,6 +324,26 @@ export default function App() {
     [currentWord]
   );
 
+  // Start Over on Current Word
+  const handleStartOverWord = useCallback(() => {
+    setUserLetters([]);
+    setValidationResult(null);
+    setSaidStartWord(false);
+    setSaidEndWord(false);
+    setVerbalPhase('awaiting_start_word');
+    setLiveTranscript('');
+    setVerbalCoachBanner('Starting over on this word. Say the word aloud to begin.');
+    soundEngine.playStepAdvance();
+    if (!soundEngine.muted) {
+      speakText(`Starting over. Your word is ${currentWord.word}.`);
+    }
+  }, [currentWord]);
+
+  // Advance to Next Word
+  const handleNextWord = useCallback(() => {
+    loadWordOnStage(undefined, true);
+  }, [loadWordOnStage]);
+
   // Process a finalized spoken utterance in Verbal Mode
   const handleVerbalUtterance = useCallback(
     (transcript: string) => {
@@ -331,6 +354,14 @@ export default function App() {
 
       // 1. Check for Pronouncer Clue / Command Prompts first
       const intent = detectVoicePromptIntent(clean);
+      if (intent === 'start_over') {
+        handleStartOverWord();
+        return;
+      }
+      if (intent === 'next_word') {
+        handleNextWord();
+        return;
+      }
       if (intent === 'repeat' || intent === 'sentence' || intent === 'definition' || intent === 'phonetic') {
         triggerClue(intent);
         return;
@@ -712,7 +743,7 @@ export default function App() {
             {/* Workspace Control Strip: Mode Selector, Bee Level Filter, Word List Source */}
             <section
               aria-label="Practice Mode and Study List Controls"
-              className="bg-white/85 backdrop-blur-md border border-pink-200/80 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4"
+              className="bg-white/55 backdrop-blur-xs border border-pink-200/75 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4"
             >
               {/* Mode Toggle: Verbal Only vs Touchscreen Only */}
               <div className="flex items-center gap-2">
@@ -829,7 +860,7 @@ export default function App() {
             {/* Two-Zone Sandbox Layout: Left Interactive Stage (7 cols) + Right Pronouncer & Clue Deck (5 cols) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
               {/* LEFT ZONE: Interactive Spelling Bee Stage */}
-              <div className="lg:col-span-7 bg-white/88 backdrop-blur-md border border-pink-200/90 rounded-3xl p-5 sm:p-7 shadow-xs flex flex-col justify-between space-y-6">
+              <div className="lg:col-span-7 bg-white/55 backdrop-blur-xs border border-pink-200/80 rounded-3xl p-5 sm:p-7 shadow-xs flex flex-col justify-between space-y-6">
                 {/* Stage Top Metadata Row (Clean Unboxed Typography) */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-pink-100 pb-4">
                   <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -956,7 +987,7 @@ export default function App() {
                   {/* Letter Tiles Display */}
                   <div
                     aria-live="polite"
-                    className="w-full min-h-[88px] p-4 rounded-2xl bg-[#FFF9FB] border border-pink-200/90 flex flex-wrap items-center justify-center gap-2"
+                    className="w-full min-h-[88px] p-4 rounded-2xl bg-white/40 backdrop-blur-2xs border border-pink-200/70 flex flex-wrap items-center justify-center gap-2"
                   >
                     {userLetters.length === 0 ? (
                       <p className="text-sm text-slate-400 font-medium text-center">
@@ -1141,15 +1172,39 @@ export default function App() {
                             setSaidStartWord(true);
                             setVerbalPhase('spelling_letters');
                             soundEngine.playStepAdvance();
-                            speakText(currentWord.word);
                             setVerbalCoachBanner(
                               'Step 1 confirmed! Now speak each letter clearly, then repeat the word to finish.'
                             );
                           }}
                           className="min-h-[52px] px-4 py-2.5 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-900 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
                         >
-                          ✓ Confirm Step 1 (“{currentWord.word}”)
+                          ✓ Confirm Step 1 (I Said the Word)
                         </button>
+                      )}
+
+                      {/* Quick Verbal Action Buttons: Start Over & Next Word */}
+                      {!validationResult && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleStartOverWord}
+                            className="min-h-[52px] px-3.5 py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-900 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                            title="Say 'Start Over' or tap to restart this word"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Start Over</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleNextWord}
+                            className="min-h-[52px] px-3.5 py-2.5 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-900 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                            title="Say 'Next Word' or tap to advance"
+                          >
+                            <span>Next Word</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-sky-600" />
+                          </button>
+                        </div>
                       )}
 
                       {userLetters.length > 0 && !validationResult && (
@@ -1181,13 +1236,14 @@ export default function App() {
                     </div>
 
                     <p className="text-xs text-slate-500 text-center">
-                      Voice commands supported anytime before finishing:{' '}
+                      Voice commands supported anytime:{' '}
                       <span className="font-semibold text-[#1E1B4B]">“Repeat”</span> ·{' '}
                       <span className="font-semibold text-[#1E1B4B]">
                         “Can you use it in a sentence?”
                       </span>{' '}
                       · <span className="font-semibold text-[#1E1B4B]">“Definition”</span>{' '}
-                      · <span className="font-semibold text-[#1E1B4B]">“Clear”</span>
+                      · <span className="font-semibold text-[#1E1B4B]">“Start Over”</span>{' '}
+                      · <span className="font-semibold text-[#1E1B4B]">“Next Word”</span>
                     </p>
 
                     {!speechSupported && (
@@ -1216,14 +1272,14 @@ export default function App() {
               {/* RIGHT ZONE: Official Pronouncer Clue Deck & Session Accuracy */}
               <div className="lg:col-span-5 flex flex-col justify-between gap-6">
                 {/* Pronouncer Clue Buttons & Cards */}
-                <div className="bg-white/88 backdrop-blur-md border border-pink-200/90 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5 flex-1">
+                <div className="bg-white/55 backdrop-blur-xs border border-pink-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5 flex-1">
                   <div>
                     <h2 className="text-lg font-display font-bold text-[#1E1B4B]">
                       Official Pronouncer Clue Deck
                     </h2>
                     <p className="text-xs text-slate-600 mt-0.5">
                       {practiceMode === 'verbal'
-                        ? 'Ask aloud ("Repeat", "Sentence", "Definition") or tap any button below.'
+                        ? 'Ask aloud ("Repeat", "Sentence", "Definition", "Start Over", "Next Word") or tap buttons below.'
                         : 'Tap any clue button below to hear and view official word guidance.'}
                     </p>
                   </div>
@@ -1233,7 +1289,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => triggerClue('repeat')}
-                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 border border-pink-200 text-xs font-semibold text-pink-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-pink-50/90 hover:bg-pink-100 border border-pink-200 text-xs font-semibold text-pink-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
                     >
                       <Volume2 className="w-4 h-4 text-pink-600 shrink-0" />
                       <span>Repeat Word</span>
@@ -1242,7 +1298,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => triggerClue('phonetic')}
-                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-semibold text-sky-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-sky-50/90 hover:bg-sky-100 border border-sky-200 text-xs font-semibold text-sky-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
                     >
                       <Sparkles className="w-4 h-4 text-sky-600 shrink-0" />
                       <span>Phonetic Guide</span>
@@ -1251,7 +1307,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => triggerClue('definition')}
-                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-pink-50 hover:bg-pink-100 border border-pink-200 text-xs font-semibold text-pink-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-pink-50/90 hover:bg-pink-100 border border-pink-200 text-xs font-semibold text-pink-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
                     >
                       <BookOpen className="w-4 h-4 text-pink-600 shrink-0" />
                       <span>Definition</span>
@@ -1260,7 +1316,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => triggerClue('sentence')}
-                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-semibold text-sky-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+                      className="min-h-[46px] px-3.5 py-2.5 rounded-xl bg-sky-50/90 hover:bg-sky-100 border border-sky-200 text-xs font-semibold text-sky-950 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
                     >
                       <MessageSquareQuote className="w-4 h-4 text-sky-600 shrink-0" />
                       <span>Use in a Sentence</span>
@@ -1270,7 +1326,7 @@ export default function App() {
                   {/* Clue Display Cards (Word spelling is masked until graded!) */}
                   <div className="space-y-3 pt-1">
                     {/* Phonetic Pronunciation Card */}
-                    <div className="p-4 rounded-2xl bg-[#FFF9FB] border border-pink-200/80">
+                    <div className="p-4 rounded-2xl bg-white/45 backdrop-blur-2xs border border-pink-200/70">
                       <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
                         <span className="font-semibold text-sky-800">
                           Phonetic Pronunciation & Part of Speech
@@ -1289,7 +1345,7 @@ export default function App() {
                     </div>
 
                     {/* Definition Card */}
-                    <div className="p-4 rounded-2xl bg-[#FFF9FB] border border-pink-200/80">
+                    <div className="p-4 rounded-2xl bg-white/45 backdrop-blur-2xs border border-pink-200/70">
                       <p className="text-xs font-semibold text-pink-800 mb-1">
                         Official Elementary Definition
                       </p>
@@ -1306,7 +1362,7 @@ export default function App() {
                     </div>
 
                     {/* Sentence Card (Target word masked as _____ before submission so it never spoils Touchscreen spelling!) */}
-                    <div className="p-4 rounded-2xl bg-[#FFF9FB] border border-pink-200/80">
+                    <div className="p-4 rounded-2xl bg-white/45 backdrop-blur-2xs border border-pink-200/70">
                       <p className="text-xs font-semibold text-sky-800 mb-1">
                         Example Sentence in Context
                       </p>
@@ -1332,7 +1388,7 @@ export default function App() {
                 </div>
 
                 {/* Live Session Accuracy & Spaced-Repetition Summary Card */}
-                <div className="bg-white/88 backdrop-blur-md border border-pink-200/90 rounded-3xl p-5 shadow-xs space-y-3">
+                <div className="bg-white/55 backdrop-blur-xs border border-pink-200/80 rounded-3xl p-5 shadow-xs space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Award className="w-5 h-5 text-pink-600" />
@@ -1350,21 +1406,21 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-2.5 text-center">
-                    <div className="p-3 rounded-2xl bg-[#FFF9FB] border border-pink-200/70">
+                    <div className="p-3 rounded-2xl bg-white/50 border border-pink-200/70">
                       <p className="text-xl font-display font-bold font-mono-tabular text-[#1E1B4B]">
                         {sessionStats.accuracy}%
                       </p>
                       <p className="text-[11px] text-slate-500">Accuracy</p>
                     </div>
 
-                    <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                    <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200">
                       <p className="text-xl font-display font-bold font-mono-tabular text-emerald-800">
                         {sessionStats.correct}
                       </p>
                       <p className="text-[11px] text-emerald-800">Correct</p>
                     </div>
 
-                    <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200">
+                    <div className="p-3 rounded-2xl bg-rose-50/80 border border-rose-200">
                       <p className="text-xl font-display font-bold font-mono-tabular text-rose-800">
                         {sessionStats.missed}
                       </p>

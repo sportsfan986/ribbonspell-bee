@@ -59,7 +59,7 @@ export const WordExplorerView: React.FC<WordExplorerViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header & Filter Bar */}
-      <div className="bg-white/85 backdrop-blur-md border border-pink-200/80 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+      <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-display font-bold text-[#1E1B4B] text-balance">
@@ -200,7 +200,7 @@ export const WordExplorerView: React.FC<WordExplorerViewProps> = ({
             return (
               <div
                 key={entry.id}
-                className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-4 flex flex-col justify-between gap-3 hover:border-pink-400 transition-colors"
+                className="bg-white/60 backdrop-blur-2xs border border-pink-200/80 rounded-2xl p-4 flex flex-col justify-between gap-3 hover:border-pink-400 transition-colors"
               >
                 <div className="space-y-2">
                   {/* Quiet unboxed metadata line */}

@@ -65,7 +65,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Summary Banner */}
-      <div className="bg-white/88 backdrop-blur-md border border-pink-200/80 rounded-2xl p-6 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-6 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-display font-bold text-[#1E1B4B]">
             Speller Mastery & Spaced-Repetition Tracker
@@ -89,7 +89,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
 
       {/* 4-Column Quantitative KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
           <p className="text-xs font-semibold text-slate-500">Overall Accuracy</p>
           <p className="text-3xl font-display font-bold text-[#1E1B4B] font-mono-tabular mt-1">
             {overallAccuracy}%
@@ -99,7 +99,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
           <p className="text-xs font-semibold text-slate-500">Words Mastered</p>
           <p className="text-3xl font-display font-bold text-emerald-700 font-mono-tabular mt-1">
             {masteredWordsCount}
@@ -109,7 +109,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
           <p className="text-xs font-semibold text-slate-500">Priority Review Queue</p>
           <p className="text-3xl font-display font-bold text-rose-700 font-mono-tabular mt-1">
             {highPriorityMissedWords.length}
@@ -119,7 +119,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5">
           <p className="text-xs font-semibold text-slate-500">Current Session Words</p>
           <p className="text-3xl font-display font-bold text-sky-700 font-mono-tabular mt-1">
             {sessionHistory.length}
@@ -137,7 +137,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
           return (
             <div
               key={tier.level}
-              className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-3"
+              className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
                 </span>
               </div>
 
-              <div className="w-full h-2.5 bg-pink-100 rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-pink-100/80 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-pink-500 to-sky-500 rounded-full transition-all"
                   style={{ width: `${Math.max(pct, tier.mastered > 0 ? 4 : 0)}%` }}
@@ -169,7 +169,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
       {/* High-Priority Missed Words & Recent Session Log */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Adaptive Spaced Repetition Queue */}
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-4">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-4">
           <div>
             <h2 className="text-lg font-display font-bold text-[#1E1B4B]">
               Boosted Spaced-Repetition Words
@@ -235,7 +235,7 @@ export const MasteryDashboardView: React.FC<MasteryDashboardViewProps> = ({
         </div>
 
         {/* Recent Session Attempts Log */}
-        <div className="bg-white/88 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-4">
+        <div className="bg-white/60 backdrop-blur-xs border border-pink-200/80 rounded-2xl p-5 space-y-4">
           <div>
             <h2 className="text-lg font-display font-bold text-[#1E1B4B]">
               Recent Practice Log

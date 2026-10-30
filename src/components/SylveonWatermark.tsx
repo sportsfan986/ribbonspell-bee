@@ -10,16 +10,16 @@ export const SylveonWatermark: React.FC = () => {
       aria-hidden="true"
       className="fixed inset-0 pointer-events-none select-none overflow-hidden z-0 flex items-center justify-center"
     >
-      {/* Subtle ambient pastel glow */}
-      <div className="absolute -top-24 -right-24 w-[520px] h-[520px] rounded-full bg-pink-200/25 blur-3xl" />
-      <div className="absolute -bottom-28 -left-24 w-[520px] h-[520px] rounded-full bg-sky-200/25 blur-3xl" />
+      {/* Ambient pastel glow */}
+      <div className="absolute -top-24 -right-24 w-[560px] h-[560px] rounded-full bg-pink-300/35 blur-3xl" />
+      <div className="absolute -bottom-28 -left-24 w-[560px] h-[560px] rounded-full bg-sky-300/35 blur-3xl" />
 
       {/* Main Sylveon Silhouette & Ribbon Illustration Watermark */}
       <svg
         viewBox="0 0 800 700"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        className="w-[82vw] max-w-[760px] h-auto opacity-[0.11] translate-y-4"
+        className="w-[88vw] max-w-[820px] h-auto opacity-[0.35] translate-y-4"
       >
         {/* Flowing Feelers / Ribbons in Background */}
         <path
