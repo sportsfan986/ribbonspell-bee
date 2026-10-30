@@ -1,0 +1,6 @@
+{
+  "name": "RibbonSpell Bee — Sylveon Scripps Spelling Studio",
+  "description": "Sylveon-themed elementary spelling bee practice studio featuring the 2026–2027 School Spelling Bee Study List and augmented Scripps words across One Bee, Two Bee, and Three Bee levels with Verbal Say-Spell-Say mode and anti-autocorrect Touchscreen mode.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
