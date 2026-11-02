@@ -18,7 +18,7 @@ class SoundEngine {
     return this.ctx;
   }
 
-  // Soft tactile click for on-screen letter tile taps
+  // Soft tactile click for manual on-screen letter tile taps only
   public playTileTap() {
     const ctx = this.getContext();
     if (!ctx) return;
@@ -27,107 +27,32 @@ class SoundEngine {
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(660, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.045);
+    osc.frequency.exponentialRampToValueAtTime(820, ctx.currentTime + 0.035);
 
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.045);
+    gain.gain.setValueAtTime(0.035, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.035);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.05);
+    osc.stop(ctx.currentTime + 0.04);
   }
 
-  // Gentle confirmación chime when "Say Word First" step completes
+  // Silenced to prevent aggressive beeping during voice recognition
   public playStepAdvance() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-
-    const notes = [523.25, 659.25]; // C5 -> E5
-    notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const start = ctx.currentTime + idx * 0.08;
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, start);
-
-      gain.gain.setValueAtTime(0.11, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.19);
-    });
+    // No-op: visual indicators show step progress without audio clutter
   }
 
-  // Crisp pleasant cue tone played the exact moment microphone opens so user knows when to speak
   public playMicReadyBeep() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-
-    const notes = [587.33, 880.0]; // D5 -> A5
-    notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const start = ctx.currentTime + idx * 0.055;
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, start);
-
-      gain.gain.setValueAtTime(0.08, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.11);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.12);
-    });
+    // No-op: prevents repeated beeping when microphone cycles
   }
 
-  // Distinct 3-note ascending chime when user taps into dedicated Letter Recognition Mode
   public playLetterModeStart() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-
-    const notes = [523.25, 659.25, 783.99]; // C5 -> E5 -> G5
-    notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const start = ctx.currentTime + idx * 0.05;
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, start);
-
-      gain.gain.setValueAtTime(0.11, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.15);
-    });
+    // No-op: prevents extra beeping when entering Letter Mode
   }
 
-  // Gentle 2-note descending cue when exiting Letter Mode back to Command Mode
   public playCommandModeStart() {
-    const ctx = this.getContext();
-    if (!ctx) return;
-
-    const notes = [659.25, 523.25]; // E5 -> C5
-    notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const start = ctx.currentTime + idx * 0.06;
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, start);
-
-      gain.gain.setValueAtTime(0.08, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.14);
-    });
+    // No-op: prevents extra beeping when exiting Letter Mode
   }
 
   // Sparkling Sylveon Fairy-type arpeggio for correct spelling

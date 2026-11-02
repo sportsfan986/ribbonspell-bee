@@ -33,6 +33,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var speechRecognizer: SpeechRecognizer? = null
     private var isContinuousListening = false
     private var listeningMode: String = "command"
+    private var lastPartialText: String = ""
+    private var lastPartialMatches: ArrayList<String>? = null
 
     companion object {
         private const val REQ_RECORD_AUDIO = 1001
@@ -129,24 +131,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
-                    if (isContinuousListening && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                        val retryDelay = if (listeningMode == "letters") 120L else 250L
+                    // If Android heard a quick single letter in onPartialResults and then timed out with
+                    // ERROR_NO_MATCH or ERROR_SPEECH_TIMEOUT, promote that partial to final so it is never lost!
+                    if (lastPartialText.isNotBlank()) {
+                        val rescuedText = lastPartialText
+                        val rescuedMatches = lastPartialMatches
+                        lastPartialText = ""
+                        lastPartialMatches = null
+                        dispatchTranscriptToWeb(rescuedText, true, rescuedMatches)
+                    }
+                    if (
+                        isContinuousListening &&
+                        error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS &&
+                        error != SpeechRecognizer.ERROR_CLIENT
+                    ) {
                         webView.postDelayed({
                             if (isContinuousListening) startRecognizerCycle()
-                        }, retryDelay)
+                        }, 450L)
                     }
                 }
 
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val topText = matches?.firstOrNull() ?: ""
+                    val topText = matches?.firstOrNull() ?: lastPartialText
+                    lastPartialText = ""
+                    lastPartialMatches = null
                     if (topText.isNotBlank()) {
                         dispatchTranscriptToWeb(topText, true, matches)
                     }
                     if (isContinuousListening) {
                         webView.postDelayed({
                             if (isContinuousListening) startRecognizerCycle()
-                        }, 45)
+                        }, 150L)
                     }
                 }
 
@@ -154,6 +170,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val topText = matches?.firstOrNull() ?: ""
                     if (topText.isNotBlank()) {
+                        lastPartialText = topText
+                        lastPartialMatches = matches
                         dispatchTranscriptToWeb(topText, false, matches)
                     }
                 }
@@ -175,24 +193,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             return
         }
         ensureSpeechRecognizer()
-        val isLettersMode = listeningMode == "letters"
+        lastPartialText = ""
+        lastPartialMatches = null
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
-            if (isLettersMode) {
-                // Extended silence window in Letter Recognition Mode so natural pauses between letters
-                // do not prematurely cut off the recognizer mid-word
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
-            } else {
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 900L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L)
-            }
         }
         try {
             speechRecognizer?.startListening(intent)

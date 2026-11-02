@@ -11,8 +11,8 @@ android {
         applicationId = "com.ribbonspell.bee"
         minSdk = 26
         targetSdk = 35
-        versionCode = 113
-        versionName = "1.13"
+        versionCode = 114
+        versionName = "1.14"
     }
 
     signingConfigs {

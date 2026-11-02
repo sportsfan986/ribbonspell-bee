@@ -140,7 +140,7 @@ export default function App() {
   const [liveTranscript, setLiveTranscript] = useState('');
   const [activeCommandBadge, setActiveCommandBadge] = useState<string>('');
   const [verbalCoachBanner, setVerbalCoachBanner] = useState<string>(
-    'Hands-free commands active ("Repeat", "Sentence", "Definition"). Tap "Start Spelling (Letter Mode)" when ready to spell!'
+    'Tap "Start Spelling (Letter Mode)" below when you are ready to spell this word!'
   );
   const [speechSupported, setSpeechSupported] = useState(true);
 
@@ -243,6 +243,7 @@ export default function App() {
       }
 
       clearAutoAdvance();
+      stopListening();
       if (finishTimerRef.current) {
         clearTimeout(finishTimerRef.current);
         finishTimerRef.current = null;
@@ -271,24 +272,16 @@ export default function App() {
       setSaidStartWord(false);
       setSaidEndWord(false);
       setLiveTranscript('');
-      setActiveCommandBadge('Hands-Free Commands');
+      setActiveCommandBadge('Tap to Spell');
       setVerbalCoachBanner(
-        'Say "Repeat", "Sentence", or "Definition" anytime—or tap "Start Spelling (Letter Mode)" to spell!'
+        'Tap "Start Spelling (Letter Mode)" below when you are ready to spell this word!'
       );
 
       if (announceAloud && !soundEngine.muted) {
-        speakText(`Your word is ${chosenWord.word}.`, {
-          onEnd: () => {
-            if (practiceMode === 'verbal') {
-              startListeningRef.current('command');
-            }
-          },
-        });
-      } else if (practiceMode === 'verbal') {
-        startListeningRef.current('command');
+        speakText(`Your word is ${chosenWord.word}.`);
       }
     },
-    [activePool, clearAutoAdvance, currentWord?.id, masteryMap, practiceMode, shortTermRetryQueue]
+    [activePool, clearAutoAdvance, currentWord?.id, masteryMap, shortTermRetryQueue, stopListening]
   );
 
   // Trigger initial pronunciation when switching to Practice Stage
@@ -302,7 +295,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Finalize and grade the student's spelling (auto-stops Letter Mode and returns to Command Mode)
+  // Finalize and grade the student's spelling (auto-stops Letter Mode and returns to idle state)
   const evaluateCurrentSpelling = useCallback(
     (lettersToGrade?: string[]) => {
       clearAutoAdvance();
@@ -322,9 +315,10 @@ export default function App() {
       const joinedSpelling = letters.join('').trim();
       if (!joinedSpelling) return;
 
-      // Auto-stop Letter Recognition Mode and return to Command Mode
+      // Auto-stop Letter Recognition Mode and stop microphone so next word requires button press
       verbalSubModeRef.current = 'command';
       setVerbalSubMode('command');
+      stopListening();
 
       const result = validateSpelling(joinedSpelling, currentWord);
       setValidationResult(result);
@@ -332,20 +326,12 @@ export default function App() {
 
       const spellAloud = currentWord.word.split('').join(' ');
 
-      // Temporarily stop listening while TTS is reading feedback to prevent audio echo
-      stopListening();
-
       // Play positive or constructive Web Audio tone & voice synthesis
       if (result.isCorrect) {
         soundEngine.playCorrectChime();
-        setVerbalCoachBanner(`✓ Correct! Auto-advancing in 5s... (Say "Next Word" to skip)`);
+        setVerbalCoachBanner(`✓ Correct! Auto-advancing in 5s... (Tap "Next Word" to skip)`);
 
         const handleCorrectSpeakingDone = () => {
-          // Keep microphone active in Command Mode listening for "next word" or "try again"
-          if (practiceMode === 'verbal') {
-            startListeningRef.current('command');
-          }
-
           // Start 5s countdown timer
           clearAutoAdvance();
           let count = 5;
@@ -371,25 +357,13 @@ export default function App() {
       } else {
         soundEngine.playConstructiveReviewTone();
         setVerbalCoachBanner(
-          `Say "Try Again" to practice this word, or say "Next Word" to continue.`
+          `Tap "Practice Word Again" to retry this word, or tap "Next Word" to continue.`
         );
-
-        const handleMissedSpeakingDone = () => {
-          // Keep microphone active in Command Mode listening for "try again" / "next word"
-          if (practiceMode === 'verbal') {
-            startListeningRef.current('command');
-          }
-        };
 
         if (!soundEngine.muted) {
           speakText(
-            `Nice try! Let's check the pattern for ${currentWord.word}: ${spellAloud}. Say "try again" to practice this word, or say "next word" to continue.`,
-            {
-              onEnd: handleMissedSpeakingDone,
-            }
+            `Nice try! Let's check the pattern for ${currentWord.word}: ${spellAloud}.`,
           );
-        } else {
-          handleMissedSpeakingDone();
         }
       }
 
@@ -515,7 +489,7 @@ export default function App() {
     startListeningRef.current('letters');
   }, [clearAutoAdvance, currentWord.word, validationResult]);
 
-  // Exit Letter Recognition Mode back to Hands-Free Command Mode without submitting
+  // Exit Letter Recognition Mode back to idle state without submitting
   const switchToCommandMode = useCallback(() => {
     if (finishTimerRef.current) {
       clearTimeout(finishTimerRef.current);
@@ -527,21 +501,23 @@ export default function App() {
     }
     // Commit any in-flight partial letters
     if (segmentLettersRef.current.length > 0) {
-      committedLettersRef.current = [
+      const merged = [
         ...committedLettersRef.current,
         ...segmentLettersRef.current,
       ];
+      committedLettersRef.current = merged;
       segmentLettersRef.current = [];
+      userLettersRef.current = merged;
+      setUserLetters(merged);
     }
     verbalSubModeRef.current = 'command';
     setVerbalSubMode('command');
-    setActiveCommandBadge('Hands-Free Commands');
+    stopListening();
+    setActiveCommandBadge('Letter Mode Paused');
     setVerbalCoachBanner(
-      'Switched to Command Mode. Ask "Repeat", "Sentence", or "Definition", or tap to resume spelling.'
+      'Letter Mode paused. Tap "Start Spelling (Letter Mode)" when ready to resume spelling.'
     );
-    soundEngine.playCommandModeStart();
-    startListeningRef.current('command');
-  }, []);
+  }, [stopListening]);
 
   // Backup Helper: Replace a specific letter tile at `index` (from Tile Popover or N-Best Chip Bar)
   const handleReplaceLetterAt = useCallback(
@@ -599,11 +575,12 @@ export default function App() {
   // Handle clue triggers (both button clicks and voice prompts)
   const triggerClue = useCallback(
     (type: 'repeat' | 'sentence' | 'definition' | 'phonetic') => {
-      const resumeMode = verbalSubModeRef.current;
+      const wasInLettersMode =
+        isMicListening && verbalSubModeRef.current === 'letters';
       stopListening();
       const onClueDone = () => {
-        if (practiceMode === 'verbal') {
-          startListeningRef.current(resumeMode);
+        if (practiceMode === 'verbal' && wasInLettersMode) {
+          startListeningRef.current('letters');
         }
       };
 
@@ -628,12 +605,13 @@ export default function App() {
         setVerbalCoachBanner(`Phonetic respelling: /${currentWord.phonetic}/`);
       }
     },
-    [currentWord, practiceMode, stopListening]
+    [currentWord, isMicListening, practiceMode, stopListening]
   );
 
-  // Start Over on Current Word
+  // Start Over on Current Word (resets to idle so user presses button to enter Letter Mode)
   const handleStartOverWord = useCallback(() => {
     clearAutoAdvance();
+    stopListening();
     if (finishTimerRef.current) {
       clearTimeout(finishTimerRef.current);
       finishTimerRef.current = null;
@@ -651,32 +629,19 @@ export default function App() {
     setValidationResult(null);
     setSaidStartWord(false);
     setSaidEndWord(false);
-    verbalSubModeRef.current = 'letters';
-    setVerbalSubMode('letters');
+    verbalSubModeRef.current = 'command';
+    setVerbalSubMode('command');
     setVerbalPhase('spelling_letters');
     setLiveTranscript('');
-    setActiveCommandBadge('Letter Mode Ready');
+    setActiveCommandBadge('Tap to Spell');
     setVerbalCoachBanner(
-      'Starting over in Letter Recognition Mode! Speak each letter clearly to spell.'
+      'Word reset! Tap "Start Spelling (Letter Mode)" when you are ready to spell.'
     );
-    soundEngine.playLetterModeStart();
-
-    // Pause mic while TTS announces restart, then resume listening in Letter Mode
-    stopListening();
-    const resumeListeningAfterPrompt = () => {
-      if (practiceMode === 'verbal') {
-        startListeningRef.current('letters');
-      }
-    };
 
     if (!soundEngine.muted) {
-      speakText(`Starting over. Your word is ${currentWord.word}.`, {
-        onEnd: resumeListeningAfterPrompt,
-      });
-    } else {
-      resumeListeningAfterPrompt();
+      speakText(`Starting over. Your word is ${currentWord.word}.`);
     }
-  }, [clearAutoAdvance, currentWord, practiceMode, stopListening]);
+  }, [clearAutoAdvance, currentWord, stopListening]);
 
   // Advance to Next Word
   const handleNextWord = useCallback(() => {
@@ -692,7 +657,7 @@ export default function App() {
     loadWordOnStage(undefined, true);
   }, [clearAutoAdvance, loadWordOnStage]);
 
-  // Process both Partial (real-time streaming) and Final speech recognition results
+  // Process both Partial (live preview) and Final speech recognition results
   const handleSpeechRecognitionUpdate = useCallback(
     (topText: string, isFinal: boolean, candidatesList?: string[]) => {
       const clean = topText.trim();
@@ -704,7 +669,7 @@ export default function App() {
       // 1. Check for utility voice commands across top transcript
       const intent = detectVoicePromptIntent(clean);
 
-      // If viewing validation feedback after a word (Command Mode):
+      // If viewing validation feedback after a word:
       if (validationResult) {
         if (!isFinal) {
           setLiveTranscript(maskTargetWordInTranscript(clean, currentWord));
@@ -800,15 +765,20 @@ export default function App() {
         }
       }
 
-      const isStrictLettersMode = verbalSubModeRef.current === 'letters';
+      // STRICT RULE: Never extract letters or auto-promote to Letter Mode unless the user
+      // explicitly pressed the "Tap to Start Spelling (Letter Mode)" button for this word!
+      if (verbalSubModeRef.current !== 'letters') {
+        setLiveTranscript('');
+        return;
+      }
 
-      // Extract letters using N-best candidates
+      // Extract letters using v1.00-compatible N-best candidates
       const extracted = extractLettersFromNBest(
         allCandidates,
         currentWord,
         saidStartWord,
         committedLettersRef.current.length,
-        isStrictLettersMode
+        true
       );
 
       // Update masked live transcript preview (never leaks target word spelling!)
@@ -822,58 +792,43 @@ export default function App() {
       if (extracted.saidStartWord && !saidStartWord) {
         setSaidStartWord(true);
         setActiveCommandBadge('Word Stated');
-        setVerbalCoachBanner(
-          isStrictLettersMode
-            ? 'Word acknowledged! Now speak each letter clearly.'
-            : 'Word acknowledged! Tap "Start Spelling (Letter Mode)" or speak letters now.'
-        );
+        setVerbalCoachBanner('Word acknowledged! Now speak each letter clearly.');
       }
 
-      // Real-time partial letter streaming in Letter Recognition Mode (or if user speaks clear letters in Command Mode)
+      // Real-time partial preview while user is actively speaking in Letter Mode:
+      // Shows in-flight tiles without beeping and without starting the 1s auto-submit prematurely!
       if (!isFinal) {
         if (extracted.letters.length > 0) {
-          // If user started speaking letters while still in Command Mode, promote to Letter Mode
-          if (verbalSubModeRef.current !== 'letters') {
-            verbalSubModeRef.current = 'letters';
-            setVerbalSubMode('letters');
-          }
-
-          const prevCount =
-            committedLettersRef.current.length + segmentLettersRef.current.length;
           segmentLettersRef.current = extracted.letters;
           const combined = [...committedLettersRef.current, ...extracted.letters];
           userLettersRef.current = combined;
           setUserLetters(combined);
 
-          if (combined.length > prevCount) {
-            soundEngine.playTileTap();
-          }
           if (extracted.nBestDisagreements.length > 0) {
             setLastLetterDisagreements(extracted.nBestDisagreements);
           }
-          scheduleVerbalAutoSubmit(combined, false);
+
+          // Keep the 10-second inactivity timer fresh while speaking, but wait for isFinal before 1s auto-submit
+          if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current);
+          }
+          inactivityTimerRef.current = setTimeout(() => {
+            setVerbalCoachBanner('10-second pause reached. Auto-stopping & submitting now...');
+            setActiveCommandBadge('10s Pause Submit');
+            evaluateCurrentSpelling(userLettersRef.current);
+          }, 10000);
         }
         return;
       }
 
       // Finalized utterance result (`isFinal === true`):
       if (extracted.letters.length > 0) {
-        if (verbalSubModeRef.current !== 'letters') {
-          verbalSubModeRef.current = 'letters';
-          setVerbalSubMode('letters');
-        }
-
-        const prevLen = userLettersRef.current.length;
         const nextCommitted = [...committedLettersRef.current, ...extracted.letters];
         committedLettersRef.current = nextCommitted;
         segmentLettersRef.current = [];
         userLettersRef.current = nextCommitted;
         setUserLetters(nextCommitted);
         setLastLetterDisagreements(extracted.nBestDisagreements);
-
-        if (nextCommitted.length > prevLen) {
-          soundEngine.playTileTap();
-        }
 
         scheduleVerbalAutoSubmit(nextCommitted, extracted.saidEndWord);
         return;
@@ -1048,11 +1003,14 @@ export default function App() {
     rec.onend = () => {
       // Fold any uncommitted partial letters before restarting cycle
       if (segmentLettersRef.current.length > 0) {
-        committedLettersRef.current = [
+        const merged = [
           ...committedLettersRef.current,
           ...segmentLettersRef.current,
         ];
+        committedLettersRef.current = merged;
         segmentLettersRef.current = [];
+        userLettersRef.current = merged;
+        setUserLetters(merged);
       }
       if (shouldKeepListeningRef.current) {
         try {
@@ -1398,7 +1356,7 @@ export default function App() {
                       {currentWord.word.length} letters
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-mono-tabular text-slate-400">v1.13</span>
+                    <span className="font-mono-tabular text-slate-400">v1.14</span>
                   </div>
 
                   {currentMastery && currentMastery.missedCount > 0 && (

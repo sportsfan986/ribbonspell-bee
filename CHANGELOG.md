@@ -1,5 +1,20 @@
 # Changelog
 
+## [v1.14] — 2026-11-02
+
+### Fixed
+- **Eliminated Aggressive Beeping**:
+  - Silenced all automatic WebAudio mode-transition and microphone-ready beeps (`playMicReadyBeep`, `playLetterModeStart`, `playCommandModeStart`, `playStepAdvance`) and removed per-letter voice recognition ticks.
+  - Stopped continuous background `SpeechRecognizer` restart loops between words so Android's native OS recognition beep never fires while listening to the pronouncer or waiting between words.
+- **Restored `v1.00` Letter Identification Accuracy (Plus Partial-Rescue & Homophone Unpacking)**:
+  - Removed multi-letter English words (`"an"`, `"in"`, `"as"`, `"is"`, `"us"`, `"am"`, `"if"`, `"al"`, `"ok"`, `"age"`, `"each"`, `"our"`, `"ice"`) from `SPOKEN_LETTER_MAP` so two-letter combinations spoken while spelling (e.g. `A - N` -> `"an"`, `I - N` -> `"in"`) preserve both letters instead of collapsing into a single letter.
+  - Restored `v1.00` character unpacking (`decomposeSpokenLetterToken`) for multi-letter speech chunks in Letter Mode while still filtering out start/end target word pronunciations.
+  - Removed custom `EXTRA_SPEECH_INPUT_*` silence overrides in `MainActivity.kt` to restore crisp `v1.00` native Android endpointing, and added automatic rescue of `lastPartialText` when Android ends a quick single-letter utterance via `onError`.
+  - Prevented premature 1-second auto-submit on unfinalized `!isFinal` partial transcripts.
+- **Strict Button-Triggered Letter Mode Per Word**:
+  - Removed automatic speech promotion from Command Mode into Letter Mode.
+  - Every new word (`loadWordOnStage`), graded word (`evaluateCurrentSpelling`), and restarted word (`handleStartOverWord`) cleanly exits Letter Mode and stops the microphone until the user explicitly presses **"Tap to Start Spelling (Letter Recognition Mode)"** for that word.
+
 ## [v1.12] — 2026-10-30
 
 ### Added

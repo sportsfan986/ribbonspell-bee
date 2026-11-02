@@ -308,15 +308,15 @@ export function detectVoicePromptIntent(transcript: string): VoicePromptIntent {
   return null;
 }
 
-// Map spoken letter homophones and NATO alphabet to single characters
+// Map strictly true spoken single-letter homophones and NATO alphabet to single characters.
+// Multi-letter words like "an", "in", "as", "is", "us", "am", "if", "al", "ok" are intentionally NOT mapped
+// to a single letter so that when a student spells "A - N" ("an") or "I - N" ("in"), both letters are preserved!
 const SPOKEN_LETTER_MAP: Record<string, string> = {
   // A
   a: 'a',
   ay: 'a',
   aye: 'a',
   hey: 'a',
-  ai: 'a',
-  ey: 'a',
   eh: 'a',
   alpha: 'a',
   // B
@@ -329,6 +329,7 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   c: 'c',
   see: 'c',
   sea: 'c',
+  cee: 'c',
   si: 'c',
   charlie: 'c',
   // D
@@ -345,31 +346,26 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   f: 'f',
   ef: 'f',
   eff: 'f',
-  if: 'f',
-  off: 'f',
   foxtrot: 'f',
   // G
   g: 'g',
   gee: 'g',
   ge: 'g',
+  jee: 'g',
   ji: 'g',
   golf: 'g',
   // H
   h: 'h',
   aitch: 'h',
   ach: 'h',
-  each: 'h',
   ha: 'h',
   heche: 'h',
-  hotel: 'h',
-  '8': 'h',
-  eight: 'h',
-  age: 'h',
   etch: 'h',
-  ait: 'h',
+  hotel: 'h',
   // I
   i: 'i',
   eye: 'i',
+  igh: 'i',
   india: 'i',
   // J
   j: 'j',
@@ -380,29 +376,23 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   k: 'k',
   kay: 'k',
   ka: 'k',
-  okay: 'k',
-  ok: 'k',
+  kei: 'k',
   kilo: 'k',
   // L
   l: 'l',
   el: 'l',
   ell: 'l',
-  al: 'l',
+  elle: 'l',
   lima: 'l',
   // M
   m: 'm',
   em: 'm',
   emm: 'm',
-  am: 'm',
-  um: 'm',
   mike: 'm',
   // N
   n: 'n',
   en: 'n',
   enn: 'n',
-  an: 'n',
-  and: 'n',
-  in: 'n',
   november: 'n',
   // O
   o: 'o',
@@ -428,18 +418,11 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   ar: 'r',
   are: 'r',
   arr: 'r',
-  our: 'r',
-  hour: 'r',
   romeo: 'r',
   // S
   s: 's',
   es: 's',
   ess: 's',
-  as: 's',
-  us: 's',
-  is: 's',
-  ice: 's',
-  yes: 's',
   sierra: 's',
   // T
   t: 't',
@@ -471,7 +454,6 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   ecks: 'x',
   xray: 'x',
   'x-ray': 'x',
-  axe: 'x',
   // Y
   y: 'y',
   why: 'y',
@@ -490,18 +472,112 @@ const SPOKEN_LETTER_MAP: Record<string, string> = {
   space: ' ',
 };
 
+// Non-letter conversational filler tokens to ignore during spelling
+const IGNORED_FILLER_TOKENS = new Set([
+  'uh',
+  'um',
+  'umm',
+  'hmm',
+  'hm',
+  'er',
+  'erm',
+  'the',
+  'word',
+  'is',
+  'spelled',
+  'spelling',
+  'please',
+  'Wait',
+  'wait',
+]);
+
+// Decompose a single normalized token into one or more letters (v1.00 + homophone decomposition)
+function decomposeSpokenLetterToken(tok: string): string[] {
+  if (!tok || IGNORED_FILLER_TOKENS.has(tok)) return [];
+
+  if (SPOKEN_LETTER_MAP[tok]) {
+    return [SPOKEN_LETTER_MAP[tok]];
+  }
+  if (tok === 'ñ' || tok === 'é') {
+    return [tok];
+  }
+  if (/^[a-z-]$/.test(tok)) {
+    return [tok];
+  }
+
+  // Check if token is two concatenated letter homophones (e.g. "beedee" -> b, d; "esstee" -> s, t)
+  const homophoneKeys = [
+    'doubleu',
+    'aitch',
+    'queue',
+    'bee',
+    'see',
+    'sea',
+    'cee',
+    'dee',
+    'eff',
+    'gee',
+    'eye',
+    'jay',
+    'kay',
+    'ell',
+    'emm',
+    'enn',
+    'owe',
+    'pee',
+    'pea',
+    'cue',
+    'are',
+    'ess',
+    'tee',
+    'tea',
+    'you',
+    'vee',
+    'why',
+    'wye',
+    'zee',
+    'zed',
+    'ay',
+    'ee',
+    'ef',
+    'el',
+    'em',
+    'en',
+    'oh',
+    'ar',
+    'es',
+    'ex',
+  ];
+
+  for (const k1 of homophoneKeys) {
+    if (tok.startsWith(k1) && tok.length > k1.length) {
+      const rem = tok.slice(k1.length);
+      if (SPOKEN_LETTER_MAP[rem]) {
+        return [SPOKEN_LETTER_MAP[k1], SPOKEN_LETTER_MAP[rem]];
+      }
+    }
+  }
+
+  // Classic v1.00 character unpacking: when Google STT joins spoken letters into a short chunk
+  // (e.g. "saun", "ter", "ed", "an", "in", "st"), split it cleanly into individual characters!
+  if (/^[a-zñé]+$/.test(tok)) {
+    return tok.split('');
+  }
+
+  return [];
+}
+
 export interface ParsedVerbalUtterance {
   saidStartWord: boolean;
   letters: string[];
   saidEndWord: boolean;
 }
 
-// Extract strictly spoken letters, single characters, or NATO/homophone tokens,
-// completely ignoring any spoken words (such as saying the target word or fillers).
-export function extractSpokenLettersOnly(
+// Normalize raw transcript and split into clean tokens
+function tokenizeSpellingTranscript(
   transcript: string,
   wordEntry: WordEntry
-): string[] {
+): { normalized: string; rawTokens: string[] } {
   const normalized = transcript
     .toLowerCase()
     .replace(/\b(letter|capital)\s+([a-z0-9])/g, '$2')
@@ -510,101 +586,58 @@ export function extractSpokenLettersOnly(
     .replace(/x\s+ray/g, 'xray')
     .replace(/n\s+tilde/g, 'ñ')
     .replace(/e\s+acute/g, 'é')
-    .replace(/[.,!?]/g, ' ')
+    .replace(/[.,!?;:/\\]/g, ' ')
     .trim();
 
-  if (!normalized) return [];
+  if (!normalized) {
+    return { normalized: '', rawTokens: [] };
+  }
 
-  // Split tokens by spaces and hyphens if hyphenated like "b-o-a-t"
   const rawTokens: string[] = [];
   for (const part of normalized.split(/\s+/).filter(Boolean)) {
     const stripped = part.replace(/[^a-z0-9ñé-]/g, '');
     if (!stripped) continue;
-    if (stripped.includes('-') && stripped.length > 2) {
+    if (
+      stripped.includes('-') &&
+      stripped.length > 2 &&
+      !isFuzzyWordMatch(stripped, wordEntry)
+    ) {
       rawTokens.push(...stripped.split('-').filter(Boolean));
     } else {
       rawTokens.push(stripped);
     }
   }
 
-  const extracted: string[] = [];
-  const targetLower = wordEntry.word.toLowerCase();
-  const altLowers = (wordEntry.altSpellings ?? []).map((s) => s.toLowerCase());
-
-  for (const tok of rawTokens) {
-    const cleanTok = tok.trim();
-    if (!cleanTok) continue;
-
-    // If the token matches the whole target word (e.g. saying "mute" at start or end),
-    // IGNORE it completely so it is never unpacked or counted as letters!
-    if (
-      cleanTok === targetLower ||
-      altLowers.includes(cleanTok) ||
-      isWordMatch(cleanTok, wordEntry)
-    ) {
-      continue;
-    }
-
-    // Check if token is in SPOKEN_LETTER_MAP
-    if (SPOKEN_LETTER_MAP[cleanTok]) {
-      extracted.push(SPOKEN_LETTER_MAP[cleanTok]);
-      continue;
-    }
-
-    // Direct single letter character (a-z, ñ, é, -)
-    if (/^[a-zñé-]$/.test(cleanTok)) {
-      extracted.push(cleanTok);
-      continue;
-    }
-
-    // Common two-letter contractions/fillers are ignored
-  }
-
-  return extracted;
+  return { normalized, rawTokens };
 }
 
-// Parse a spoken utterance for letters and start/end word confirmations
-// Treating spoken words and spoken letters independently so saying "Boat B-O-A-T Boat"
-// cleanly recognizes: Start Word ("Boat"), Letters (['b', 'o', 'a', 't']), End Word ("Boat")
+export function extractSpokenLettersOnly(
+  transcript: string,
+  wordEntry: WordEntry
+): string[] {
+  const parsed = parseSpokenSpelling(transcript, wordEntry, true, 0);
+  return parsed.letters;
+}
+
+// Parse a spoken utterance in Letter Mode into letters and optional start/end word framing
 export function parseSpokenSpelling(
   transcript: string,
   wordEntry: WordEntry,
   alreadySaidStartWord: boolean,
   currentSpelledCount: number
 ): ParsedVerbalUtterance {
-  const normalized = transcript
-    .toLowerCase()
-    .replace(/\b(letter|capital)\s+([a-z0-9])/g, '$2')
-    .replace(/double\s+u/g, 'doubleu')
-    .replace(/double\s+you/g, 'doubleu')
-    .replace(/x\s+ray/g, 'xray')
-    .replace(/n\s+tilde/g, 'ñ')
-    .replace(/e\s+acute/g, 'é')
-    .replace(/[.,!?]/g, ' ')
-    .trim();
+  const { normalized, rawTokens } = tokenizeSpellingTranscript(transcript, wordEntry);
 
-  if (!normalized) {
+  if (!normalized || rawTokens.length === 0) {
     return { saidStartWord: false, letters: [], saidEndWord: false };
-  }
-
-  // Pre-split tokens, handling hyphenated letter sequences like "b-o-a-t"
-  const rawTokens: string[] = [];
-  for (const part of normalized.split(/\s+/).filter(Boolean)) {
-    const stripped = part.replace(/[^a-z0-9ñé-]/g, '');
-    if (!stripped) continue;
-    if (stripped.includes('-') && stripped.length > 2 && !isFuzzyWordMatch(stripped, wordEntry)) {
-      rawTokens.push(...stripped.split('-').filter(Boolean));
-    } else {
-      rawTokens.push(stripped);
-    }
   }
 
   let saidStartWord = false;
   let saidEndWord = false;
   let tokens = [...rawTokens];
 
-  // Case 1: Entire utterance is purely the target word
-  if (tokens.length >= 1 && isFuzzyWordMatch(normalized, wordEntry)) {
+  // Case 1: Single-word utterance that matches the target word (e.g. saying the word at start or end)
+  if (tokens.length === 1 && isFuzzyWordMatch(normalized, wordEntry)) {
     if (!alreadySaidStartWord || currentSpelledCount === 0) {
       return { saidStartWord: true, letters: [], saidEndWord: false };
     } else {
@@ -612,14 +645,17 @@ export function parseSpokenSpelling(
     }
   }
 
-  // Case 2: Multi-token utterance (e.g. "Boat B O A T Boat" or "Boat B O A T")
-  // Check leading token(s) for start word
-  if (tokens.length >= 1) {
-    if (isFuzzyWordMatch(tokens[0], wordEntry) && tokens[0].length > 1) {
+  // Case 2: Multi-token utterance where leading token(s) are the target word ("Boat B O A T")
+  if (tokens.length >= 2) {
+    if (
+      tokens[0].length > 1 &&
+      !SPOKEN_LETTER_MAP[tokens[0]] &&
+      isFuzzyWordMatch(tokens[0], wordEntry)
+    ) {
       saidStartWord = true;
       tokens = tokens.slice(1);
     } else if (
-      tokens.length >= 2 &&
+      tokens.length >= 3 &&
       isFuzzyWordMatch(`${tokens[0]} ${tokens[1]}`, wordEntry)
     ) {
       saidStartWord = true;
@@ -627,8 +663,8 @@ export function parseSpokenSpelling(
     }
   }
 
-  // Check trailing token(s) for end word after letters
-  if (tokens.length >= 1) {
+  // Check trailing token(s) for end word after letters ("B O A T Boat")
+  if (tokens.length >= 2) {
     const lastTok = tokens[tokens.length - 1];
     if (
       lastTok.length > 1 &&
@@ -637,7 +673,7 @@ export function parseSpokenSpelling(
     ) {
       saidEndWord = true;
       tokens = tokens.slice(0, -1);
-    } else if (tokens.length >= 2) {
+    } else if (tokens.length >= 3) {
       const lastTwo = `${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`;
       if (isFuzzyWordMatch(lastTwo, wordEntry)) {
         saidEndWord = true;
@@ -646,26 +682,23 @@ export function parseSpokenSpelling(
     }
   }
 
-  // Case 3: Parse remaining middle tokens strictly as letters
-  // Spoken words are never dumped as letters!
+  // Case 3: Extract letters from all remaining tokens (using v1.00 character unpacking + homophones)
   const extractedLetters: string[] = [];
 
   for (const tok of tokens) {
-    if (SPOKEN_LETTER_MAP[tok]) {
-      extractedLetters.push(SPOKEN_LETTER_MAP[tok]);
-    } else if (tok === 'ñ' || tok === 'é') {
-      extractedLetters.push(tok);
-    } else if (/^[a-z-]$/.test(tok)) {
-      extractedLetters.push(tok);
-    } else if (isFuzzyWordMatch(tok, wordEntry)) {
-      // It's the target word repeated in speech - consume as word, not letters!
+    if (tok.length > 1 && !SPOKEN_LETTER_MAP[tok] && isFuzzyWordMatch(tok, wordEntry)) {
       if (!alreadySaidStartWord && !saidStartWord && extractedLetters.length === 0) {
         saidStartWord = true;
       } else {
         saidEndWord = true;
       }
+      continue;
     }
-    // Any other arbitrary non-letter words are deliberately ignored!
+
+    const lettersFromTok = decomposeSpokenLetterToken(tok);
+    if (lettersFromTok.length > 0) {
+      extractedLetters.push(...lettersFromTok);
+    }
   }
 
   return {
@@ -699,7 +732,7 @@ export const ACOUSTIC_CONFUSION_MAP: Record<string, string[]> = {
   t: ['d', 'p', 'b', 'c', 'e', 'g'],
   u: ['q', 'o', 'w', 'y'],
   v: ['b', 'z', 'd', 'p', 'e', 'f', 'c'],
-  w: ['u', 'o', 'doubleu' === 'w' ? 'v' : 'v'],
+  w: ['u', 'o', 'v'],
   x: ['s', 'f', 'z', 'c', 'k'],
   y: ['i', 'u', 'w', 'a'],
   z: ['v', 'c', 's', 'b', 'd', 'g'],
@@ -766,7 +799,7 @@ export function extractLettersFromNBest(
   wordEntry: WordEntry,
   alreadySaidStartWord: boolean,
   currentSpelledCount: number,
-  strictLetterMode: boolean
+  _strictLetterMode: boolean
 ): NBestLetterExtractionResult {
   const validCandidates = candidates.map((c) => c.trim()).filter(Boolean);
   if (validCandidates.length === 0) {
@@ -778,53 +811,42 @@ export function extractLettersFromNBest(
     };
   }
 
-  // Parse each candidate with standard parseSpokenSpelling
-  const parsedList = validCandidates.map((cand) =>
-    parseSpokenSpelling(cand, wordEntry, alreadySaidStartWord, currentSpelledCount)
-  );
+  // Parse each candidate with v1.00-compatible parseSpokenSpelling
+  const parsedList = validCandidates.map((cand) => {
+    const { rawTokens } = tokenizeSpellingTranscript(cand, wordEntry);
+    const explicitSingleOrHomophoneCount = rawTokens.filter(
+      (t) => t.length === 1 || Boolean(SPOKEN_LETTER_MAP[t])
+    ).length;
+    const parsed = parseSpokenSpelling(
+      cand,
+      wordEntry,
+      alreadySaidStartWord,
+      currentSpelledCount
+    );
+    return {
+      parsed,
+      explicitSingleOrHomophoneCount,
+    };
+  });
 
-  // Choose the candidate that extracted the most explicit spoken letters
+  // Prefer the N-best candidate that has the most explicit individual letters/homophones,
+  // falling back to the top candidate (index 0) when tied
   let bestIdx = 0;
   let bestScore = -1;
 
   for (let i = 0; i < parsedList.length; i++) {
-    const p = parsedList[i];
-    // Favor earlier N-best rank slightly via tie-breaker, but strongly prefer candidates that parsed explicit letters
-    const score = p.letters.length * 10 - i;
+    const item = parsedList[i];
+    const score =
+      item.explicitSingleOrHomophoneCount * 15 +
+      item.parsed.letters.length * 5 -
+      i * 2;
     if (score > bestScore) {
       bestScore = score;
       bestIdx = i;
     }
   }
 
-  let chosen = parsedList[bestIdx];
-
-  // Fallback for strict Letter Recognition Mode:
-  // If STT merged a short sequence of spoken letters into a single short non-command, non-target word
-  // (e.g. user said "B E D" and all candidates only contain "bed"), unpack short 2-3 char tokens if safe
-  if (strictLetterMode && chosen.letters.length === 0) {
-    const topRaw = validCandidates[0].toLowerCase().trim();
-    if (!detectVoicePromptIntent(topRaw) && !isFuzzyWordMatch(topRaw, wordEntry)) {
-      const words = topRaw.split(/\s+/).filter(Boolean);
-      const fallbackLetters: string[] = [];
-      for (const w of words) {
-        const cleanW = w.replace(/[^a-z]/g, '');
-        if (!cleanW || isWordMatch(cleanW, wordEntry)) continue;
-        if (SPOKEN_LETTER_MAP[cleanW]) {
-          fallbackLetters.push(SPOKEN_LETTER_MAP[cleanW]);
-        } else if (cleanW.length >= 2 && cleanW.length <= 3) {
-          // Unpack 2-3 letter merged syllable in strict Letter Mode (e.g. "be", "bed", "cat")
-          fallbackLetters.push(...cleanW.split(''));
-        }
-      }
-      if (fallbackLetters.length > 0) {
-        chosen = {
-          ...chosen,
-          letters: fallbackLetters,
-        };
-      }
-    }
-  }
+  const chosen = parsedList[bestIdx].parsed;
 
   // Collect any N-best disagreements on the last letter spoken
   const disagreements: string[] = [];
@@ -832,7 +854,7 @@ export function extractLettersFromNBest(
     const lastChosen = chosen.letters[chosen.letters.length - 1];
     for (let i = 0; i < parsedList.length; i++) {
       if (i === bestIdx) continue;
-      const otherLetters = parsedList[i].letters;
+      const otherLetters = parsedList[i].parsed.letters;
       if (otherLetters.length > 0) {
         const otherLast = otherLetters[otherLetters.length - 1];
         if (
