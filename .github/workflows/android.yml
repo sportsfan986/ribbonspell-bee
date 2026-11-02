@@ -1,0 +1,176 @@
+name: Build Android APK
+
+concurrency:
+  group: "android-build"
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Build Target'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+          - both
+      workflow_version:
+        description: 'Optional release version override (e.g. v1.00)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve Release Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.workflow_version }}" ]; then
+            RAW_VER="${{ github.event.inputs.workflow_version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            RAW_VER="${{ github.ref_name }}"
+          elif [ -f VERSION ]; then
+            RAW_VER=$(cat VERSION | tr -d '[:space:]')
+          elif [ -f app/build.gradle.kts ] && grep -q 'versionName' app/build.gradle.kts; then
+            RAW_VER=$(grep -E 'versionName\s*=\s*' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          else
+            RAW_VER="v1.00"
+          fi
+          CLEAN_NUM="${RAW_VER#v}"
+          TAG_NAME="v${CLEAN_NUM}"
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "version_num=${CLEAN_NUM}" >> $GITHUB_OUTPUT
+          echo "Resolved release version: ${TAG_NAME}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Web Bundle & Sync to Android Assets
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
+          rm -rf app/src/main/assets/www
+          mkdir -p app/src/main/assets/www
+          cp -r dist/* app/src/main/assets/www/
+        env:
+          VITE_BASE_URL: /assets/www/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x gradlew
+
+      - name: Verify or Generate Release Keystore
+        run: |
+          if [ ! -f app/release.keystore ]; then
+            echo "Generating release keystore via keytool..."
+            keytool -genkeypair -v \
+              -keystore app/release.keystore \
+              -alias ribbonkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass ribbonspell123 \
+              -keypass ribbonspell123 \
+              -dname "CN=RibbonSpell Bee, OU=Android, O=RibbonSpell, C=US"
+          else
+            echo "Release keystore is present at app/release.keystore"
+          fi
+
+      - name: Build Release APK
+        if: github.event.inputs.build_target == 'release' || github.event.inputs.build_target == 'both' || github.event.inputs.build_target == '' || github.event_name == 'push'
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Prepare Named Release APK for Public Download
+        if: github.event.inputs.build_target == 'release' || github.event.inputs.build_target == 'both' || github.event.inputs.build_target == '' || github.event_name == 'push'
+        run: |
+          mkdir -p app/build/outputs/apk/release/named
+          cp app/build/outputs/apk/release/*.apk "app/build/outputs/apk/release/named/ribbonspell-bee-${{ steps.version.outputs.tag }}.apk"
+
+      - name: Build Debug APK
+        if: github.event.inputs.build_target == 'debug' || github.event.inputs.build_target == 'both'
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ribbonspell-bee-release-apk
+          path: app/build/outputs/apk/release/named/ribbonspell-bee-*.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish Official GitHub Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        id: create_release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "RibbonSpell Bee ${{ steps.version.outputs.tag }}"
+          body: |
+            ## RibbonSpell Bee ${{ steps.version.outputs.tag }} — Official Release (Sylveon Scripps 2026–2027 Spelling Studio)
+
+            ### Key Features in `${{ steps.version.outputs.tag }}`
+            - **Complete 2026–2027 School Spelling Bee Study List (450 Words) + Augmented Scripps Bank (525 Words Total)**:
+              - Full coverage of **One Bee**, **Two Bee**, and **Three Bee** difficulty levels from the official 6-page 2026–2027 School PDF plus 75 additional Scripps study words.
+              - Supports official US and British/preferred alternate spellings (*fertilizer/fertiliser*, *materialize/materialise*, *odorant/odourant*, *glycerin/glycerine*, *brazier/brasier*, *kerosene/kerosine*).
+            - **Verbal Mode (Structured "Say Word → Spell Letters → Say Word" Flow)**:
+              - Reads words aloud with natural TTS and listens for voice prompts (*"Repeat"*, *"Can you use it in a sentence?"*, *"Definition"*).
+              - Enforces competitive muscle memory using fuzzy word matching and phonetic letter disambiguation, validating each letter after the speller finishes.
+            - **Touchscreen Mode (Anti-Autocorrect Letter Tile Keypad)**:
+              - Custom on-screen QWERTY + diacritic/punctuation tile keypad (`a–z`, `-`, `Space`, `ñ`, `é`) that prevents OS keyboard autocorrect, predictive text, and spellcheck underlines.
+            - **Adaptive Spaced Repetition & Constructive Feedback**:
+              - Sparkling Fairy-type harmonic arpeggio for correct spellings and a gentle marimba tone with side-by-side pattern diffs for missed words, automatically boosting missed words in current and future sessions.
+            - **Sylveon Theme & Watermark**:
+              - Styled in Sylveon's pearl-cream, pastel ribbon pink, and cerulean blue palette with a custom Sylveon illustration watermark in the background.
+
+            ### Live Web Simulator & Download
+            - **Live Web Simulator**: [https://sportsfan986.github.io/ribbonspell-bee/](https://sportsfan986.github.io/ribbonspell-bee/)
+            - **Full Release History**: [CHANGELOG.md](https://github.com/sportsfan986/ribbonspell-bee/blob/main/CHANGELOG.md)
+            - **Android APK**: Download **`ribbonspell-bee-${{ steps.version.outputs.tag }}.apk`** from the **Assets** section below and install on your Android phone or tablet.
+          files: |
+            app/build/outputs/apk/release/named/ribbonspell-bee-${{ steps.version.outputs.tag }}.apk
+          draft: false
+          prerelease: false
+          make_latest: "true"
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure Release Asset Uploaded (Fallback)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          APK_FILE="app/build/outputs/apk/release/named/ribbonspell-bee-${TAG}.apk"
+          if [ -f "$APK_FILE" ]; then
+            echo "Ensuring release asset is attached to $TAG via gh CLI..."
+            gh release upload "$TAG" "$APK_FILE" --clobber || echo "Asset already up to date"
+          fi
